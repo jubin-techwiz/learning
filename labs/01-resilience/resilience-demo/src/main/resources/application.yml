@@ -1,0 +1,55 @@
+server:
+  port: 8085
+  tomcat:
+    threads:
+      max: 10          # deliberately small so thread exhaustion is easy to see (Tomcat's default is 200)
+
+spring:
+  application:
+    name: resilience-demo
+
+# How the caller reaches "payment-service". Blank = this app's own /downstream/payment endpoint,
+# which lets you flip it between healthy / failing / slow at runtime.
+payment:
+  base-url:
+  connect-timeout: 1s
+  read-timeout: 3s   # the timeout is the first line of defence; the breaker is the second
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      payment:
+        # --- what we measure -------------------------------------------------
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10               # evaluate the last 10 calls
+        minimumNumberOfCalls: 5             # don't judge on fewer than 5 calls
+        failureRateThreshold: 50            # >=50% failures -> OPEN
+        slowCallDurationThreshold: 1s       # a call slower than this counts as "slow"
+        slowCallRateThreshold: 80           # >=80% slow calls -> OPEN
+        # --- recovery --------------------------------------------------------
+        waitDurationInOpenState: 10s
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        permittedNumberOfCallsInHalfOpenState: 3
+        # --- what counts as a failure ----------------------------------------
+        # A declined card is a correct business answer, not a dependency outage.
+        ignoreExceptions:
+          - com.learning.resilience.PaymentDeclinedException
+        registerHealthIndicator: true
+
+  bulkhead:
+    instances:
+      inventory:
+        maxConcurrentCalls: 3     # at most 3 inventory calls at the same time
+        maxWaitDuration: 0        # a 4th caller does not queue; it is refused immediately
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,circuitbreakers,circuitbreakerevents,bulkheads,bulkheadevents
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
