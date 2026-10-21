@@ -31,16 +31,16 @@ The line is blurring: RabbitMQ has streams, and Kafka's queue-style **share grou
 
 | Question | Usual answer |
 |---|---|
-| Delivery? | At-least-once, with idempotent consumers |
-| Ordering? | Kafka: only within a partition (use a key). Queue: only with one consumer and no redelivery; competing consumers or retries can reorder |
-| Duplicates? | Idempotent consumer for your own state (dedupe by event ID, upserts); the provider's idempotency key for external calls |
-| Failures? | Retry transient errors with backoff; dead-letter permanent ones |
+| Delivery? | Usually at-least-once: not lost while retained and retried until processed, but may repeat, so consumers must be idempotent for their own state ([2.2.5](02-kafka/05-offset-commits-delivery-guarantees.md)) |
+| Ordering? | Kafka: only within a partition, via a key, while the partition count is unchanged ([2.2.11](02-kafka/11-ordering-partition-planning-hot-partitions.md)). Queue: only with one consumer and no redelivery; competing consumers or retries can reorder |
+| Duplicates? | Idempotent consumer for your own state (dedupe by event ID in the same database transaction, upserts); the provider's idempotency key for external calls ([2.2.5](02-kafka/05-offset-commits-delivery-guarantees.md), [2.2.9](02-kafka/09-idempotent-producer-transactions.md)) |
+| Failures? | Retry transient errors with backoff; dead-letter permanent ones (a dead-lettered event is not processed, and its replay can arrive out of order) ([2.2.8](02-kafka/08-error-handling-retries-dlt.md)) |
 
 ## Who guarantees what
 
 | Layer | Guarantees | Does not guarantee |
 |---|---|---|
-| Kafka brokers | Durable, ordered storage per partition (with `acks=all`, replication factor 3, `min.insync.replicas=2`) | That anyone processed the event |
+| Kafka brokers | Ordered storage per partition; durable for acknowledged writes given `acks=all`, replication factor 3 and `min.insync.replicas=2` ([2.2.6](02-kafka/06-brokers-replication-leader-election.md)) | That anyone processed the event |
 | Producer client | Retries without duplicates within a producer session (idempotence); transactions make writes and consumed offsets atomic across Kafka topics only | That your database write and the send both happen; anything outside Kafka |
 | Spring Kafka | Polling, commits per ack mode (`BATCH` by default: after the poll's records are handled), retries and DLT publishing if configured | Idempotent business logic; successful processing of a dead-lettered event |
 | Your application | Idempotent processing of its own state (dedupe in the same database transaction); outbox for database + event; ownership and replay of the DLT | Duplicate-free calls to other systems unless they support idempotency |
@@ -93,15 +93,15 @@ Client, broker and topic values were read from Apache Kafka 4.3.2 on 2026-10-21;
 
 ## Interview corner
 
-**15-second answer:** "Messaging decouples services through a broker; Kafka is a partitioned, durable log where order holds per partition and each consumer group keeps its own offsets."
+**15-second answer:** "Messaging decouples services through a broker; Kafka is a partitioned, durable log where order is guaranteed only within a partition and each consumer group keeps its own offsets; delivery is usually at-least-once."
 
 **60-second answer:**
 > "Messaging decouples services through a broker. Queues remove a message once handled; logs like Kafka keep events and let each reader track its own position, which gives replay and many independent consumers. In Kafka, topics are split into partitions; order holds only inside a partition, so related events share a key. For business events I use acks=all, replication factor 3, min.insync.replicas 2 and idempotence, commit offsets after processing, and make consumers idempotent. Permanent failures go to a dead-letter topic, and database changes are published through an outbox, which is reliable but at-least-once."
 
 **Likely follow-up questions:**
 - **Kafka or RabbitMQ?** Facts for many readers and replay: Kafka. Tasks with rich routing: RabbitMQ.
-- **How do you keep one order's events in order?** Key by order ID, and don't change the partition count casually.
+- **How do you keep one order's events in order?** Key by order ID, don't change the partition count casually, and don't let retry topics reorder them ([2.2.8](02-kafka/08-error-handling-retries-dlt.md)).
 - **Does Kafka give exactly-once?** Inside Kafka, with transactions. Across a database or an email provider, no: use idempotency and the outbox.
-- **How do you avoid losing events when producing?** `acks=all`, `min.insync.replicas=2`, idempotence, handle send failures, outbox for critical ones.
+- **How do you avoid losing events when producing?** `acks=all`, `min.insync.replicas=2`, idempotence, handle send failures, outbox for critical ones. That protects the write to Kafka, not what consumers later do with the event.
 
 Back to [the messaging overview](01-messaging-overview.md) · [Glossary](98-messaging-glossary.md) · [Index](../README.md) · [Roadmap](../roadmap.md).
