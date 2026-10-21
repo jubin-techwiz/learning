@@ -107,23 +107,23 @@ Three rules explain most of Kafka's behaviour: **order exists only inside a part
 
 | Step | Topic | Status |
 |---|---|---|
-| 2.2.7 | Rebalancing and static membership | Planned |
-| 2.2.8 | Error handling, retries and dead-letter topics | Planned |
-| 2.2.9 | Idempotent producer and transactions (exactly-once) | Planned |
-| 2.2.10 | Schemas and evolution (Avro, Schema Registry) | Planned |
-| 2.2.11 | Ordering, partition planning and hot partitions | Planned |
-| 2.2.12 | Kafka with Spring Boot | Planned |
+| 2.2.7 | [Rebalancing and static membership](07-rebalancing-static-membership.md) | Done |
+| 2.2.8 | [Error handling, retries and dead-letter topics](08-error-handling-retries-dlt.md) | Done |
+| 2.2.9 | [Idempotent producer and transactions (exactly-once)](09-idempotent-producer-transactions.md) | Done |
+| 2.2.10 | [Schemas and evolution (Avro, Schema Registry)](10-schemas-evolution.md) | Done |
+| 2.2.11 | [Ordering, partition planning and hot partitions](11-ordering-partition-planning-hot-partitions.md) | Done |
+| 2.2.12 | [Kafka with Spring Boot](12-kafka-with-spring-boot.md) | Done |
 
 ### Advanced
 
 | Step | Topic | Status |
 |---|---|---|
-| 2.2.13 | Retention, log compaction and tiered storage | Planned |
-| 2.2.14 | Stream processing basics (Kafka Streams) | Planned |
-| 2.2.15 | Kafka Connect and change data capture | Planned |
-| 2.2.16 | Security: TLS, SASL and ACLs | Planned |
-| 2.2.17 | Monitoring, consumer lag and capacity planning | Planned |
-| 2.2.18 | Multi-cluster and disaster recovery | Planned |
+| 2.2.13 | [Retention, log compaction and tiered storage](13-retention-compaction-tiered-storage.md) | Done |
+| 2.2.14 | [Stream processing basics (Kafka Streams)](14-kafka-streams-basics.md) | Done |
+| 2.2.15 | [Kafka Connect and change data capture](15-kafka-connect-cdc.md) | Done |
+| 2.2.16 | [Security: TLS, SASL and ACLs](16-security-tls-sasl-acls.md) | Done |
+| 2.2.17 | [Monitoring, consumer lag and capacity planning](17-monitoring-lag-capacity.md) | Done |
+| 2.2.18 | [Multi-cluster and disaster recovery](18-multi-cluster-disaster-recovery.md) | Done |
 
 Steps 2.2.8 and 2.2.9 build on the resilience notes on [retries](../../01-resilience/03-retries-backoff-jitter.md) and [idempotency](../../01-resilience/04-idempotency.md).
 

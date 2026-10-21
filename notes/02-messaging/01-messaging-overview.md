@@ -110,7 +110,7 @@ flowchart LR
 | Step | Topic | Status |
 |---|---|---|
 | 2.1 | This overview | Done |
-| 2.2 | Apache Kafka series (2.2.1 to 2.2.18): start at the [Kafka overview](02-kafka/01-kafka-overview.md) | Learning |
+| 2.2 | Apache Kafka series (2.2.1 to 2.2.18): start at the [Kafka overview](02-kafka/01-kafka-overview.md) | Done |
 | 2.3 | RabbitMQ series (2.3.1 to 2.3.14) | Planned |
 | 2.4 | Choosing a messaging system | Planned |
 | | [Messaging cheat sheet](99-messaging-cheat-sheet.md) (revision) | Growing |

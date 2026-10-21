@@ -30,16 +30,16 @@ You can have several areas open at once. When you switch, the area you leave is 
 | Area | Status | Done | Resume at | Notes |
 |---|---|---|---|---|
 | 1 Resilience | Done | 1.1 to 1.10 | none | All ten notes are written. Revise from the cheat sheet. Hands-on demo only if you ask |
-| 2 Messaging, Kafka | Learning | 2.1, 2.2.1 to 2.2.6 (fundamentals complete) | 2.2.7 Rebalancing and static membership | Resumed on 2026-10-21 after the resilience notes were finished. Kafka error handling and the idempotent producer (2.2.8, 2.2.9) have their resilience prerequisites in place |
+| 2 Messaging, Kafka | Done | 2.1, 2.2.1 to 2.2.18 (Kafka series complete) | Next in this area: RabbitMQ series (2.3) | Resumed on 2026-10-21 after the resilience notes were finished. Kafka error handling and the idempotent producer (2.2.8, 2.2.9) have their resilience prerequisites in place |
 
 ## Do next
 
 | # | Topic | Step | Why now |
 |---|---|---|---|
-| 1 | Kafka intermediate | 2.2.7 to 2.2.12 | Rebalancing, error handling, transactions, schemas, ordering, Spring Boot |
-| 2 | Kafka advanced | 2.2.13 to 2.2.18 | Retention, streams, Connect, security, monitoring, disaster recovery |
-| 3 | RabbitMQ series, then choosing a messaging system | 2.3.x, 2.4 | Completes the messaging area |
-| 4 | Design patterns | 3.x | Next track in your order |
+| 1 | RabbitMQ series | 2.3.1 to 2.3.14 | The queue family, to compare with Kafka |
+| 2 | Choosing a messaging system | 2.4 | Completes the messaging area with a decision guide |
+| 3 | Design patterns | 3.x | Next track in your order |
+| 4 | Microservices | 4.x | Builds on resilience, messaging and design patterns |
 
 ## Tracks
 
@@ -79,18 +79,18 @@ Why: events decouple teams and services, but they bring ordering, duplicate and 
 | 2.2.4 | [Consumers and consumer groups](02-messaging/02-kafka/04-consumers-consumer-groups.md) | Fundamentals | Both | Done |
 | 2.2.5 | [Offset commits and delivery guarantees](02-messaging/02-kafka/05-offset-commits-delivery-guarantees.md) | Fundamentals | Both | Done |
 | 2.2.6 | [Brokers, replication and leader election](02-messaging/02-kafka/06-brokers-replication-leader-election.md) | Fundamentals | Both | Done |
-| 2.2.7 | Rebalancing and static membership | Intermediate | Both | Planned |
-| 2.2.8 | Error handling, retries and dead-letter topics | Intermediate | Engineer | Planned |
-| 2.2.9 | Idempotent producer and transactions (exactly-once) | Intermediate | Both | Planned |
-| 2.2.10 | Schemas and evolution (Avro, Schema Registry) | Intermediate | Architect | Planned |
-| 2.2.11 | Ordering, partition planning and hot partitions | Intermediate | Architect | Planned |
-| 2.2.12 | Kafka with Spring Boot | Intermediate | Engineer | Planned |
-| 2.2.13 | Retention, log compaction and tiered storage | Advanced | Architect | Planned |
-| 2.2.14 | Stream processing basics (Kafka Streams) | Advanced | Both | Planned |
-| 2.2.15 | Kafka Connect and change data capture | Advanced | Both | Planned |
-| 2.2.16 | Security: TLS, SASL and ACLs | Advanced | Both | Planned |
-| 2.2.17 | Monitoring, consumer lag and capacity planning | Advanced | Both | Planned |
-| 2.2.18 | Multi-cluster and disaster recovery | Advanced | Architect | Planned |
+| 2.2.7 | [Rebalancing and static membership](02-messaging/02-kafka/07-rebalancing-static-membership.md) | Intermediate | Both | Done |
+| 2.2.8 | [Error handling, retries and dead-letter topics](02-messaging/02-kafka/08-error-handling-retries-dlt.md) | Intermediate | Engineer | Done |
+| 2.2.9 | [Idempotent producer and transactions (exactly-once)](02-messaging/02-kafka/09-idempotent-producer-transactions.md) | Intermediate | Both | Done |
+| 2.2.10 | [Schemas and evolution (Avro, Schema Registry)](02-messaging/02-kafka/10-schemas-evolution.md) | Intermediate | Architect | Done |
+| 2.2.11 | [Ordering, partition planning and hot partitions](02-messaging/02-kafka/11-ordering-partition-planning-hot-partitions.md) | Intermediate | Architect | Done |
+| 2.2.12 | [Kafka with Spring Boot](02-messaging/02-kafka/12-kafka-with-spring-boot.md) | Intermediate | Engineer | Done |
+| 2.2.13 | [Retention, log compaction and tiered storage](02-messaging/02-kafka/13-retention-compaction-tiered-storage.md) | Advanced | Architect | Done |
+| 2.2.14 | [Stream processing basics (Kafka Streams)](02-messaging/02-kafka/14-kafka-streams-basics.md) | Advanced | Both | Done |
+| 2.2.15 | [Kafka Connect and change data capture](02-messaging/02-kafka/15-kafka-connect-cdc.md) | Advanced | Both | Done |
+| 2.2.16 | [Security: TLS, SASL and ACLs](02-messaging/02-kafka/16-security-tls-sasl-acls.md) | Advanced | Both | Done |
+| 2.2.17 | [Monitoring, consumer lag and capacity planning](02-messaging/02-kafka/17-monitoring-lag-capacity.md) | Advanced | Both | Done |
+| 2.2.18 | [Multi-cluster and disaster recovery](02-messaging/02-kafka/18-multi-cluster-disaster-recovery.md) | Advanced | Architect | Done |
 
 **Series 2.3, RabbitMQ (fundamentals to advanced).** A second series in the same area: `02-messaging/03-rabbitmq/`. Kafka is a log you read from; RabbitMQ is a broker that routes messages into queues. Learning both, and then comparing them, is what makes the choice an architect's decision.
 

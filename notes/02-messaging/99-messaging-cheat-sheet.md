@@ -13,7 +13,7 @@ updated: "2026-10-21"
 > [!TIP]
 > **The area in one line:** services send messages through a broker instead of calling each other; queues hold work to do once, logs like Kafka keep facts for many readers.
 >
-> **Memory hooks:** a **letter in a mailbox** versus a phone call (messaging); a **logbook that never gets torn up** (Kafka); **checkout lanes** with numbered receipts (partitions and offsets); a **courier** who sorts by address, drives full vans and asks for signatures (producer); a **team of cashiers**, one per lane (consumer group); a **bookmark on the train**: move it before reading and you skip, after and you reread (offset commits); a **head chef and sous-chefs**: only caught-up sous-chefs may take over (replication and the ISR).
+> **Memory hooks:** a **letter in a mailbox** versus a phone call (messaging); a **logbook that never gets torn up** (Kafka); **checkout lanes** with numbered receipts (partitions and offsets); a **courier** who sorts by address, drives full vans and asks for signatures (producer); a **team of cashiers**, one per lane (consumer group); a **bookmark on the train**: move it before reading and you skip, after and you reread (offset commits); a **head chef and sous-chefs**: only caught-up sous-chefs may take over (replication and the ISR); **waiters and tables**: eager redraws every table, cooperative moves only some, static members keep their tables during a short break (rebalancing); the **"undeliverable" shelf** at the post office (dead-letter topic); a **bank transfer**: both sides or neither (transactions); a **standard plug socket**: add features, never change the plug (schemas); **airport check-in desks**: families together, enough desks for the busiest day, and a 300-person tour group jams one desk (ordering and hot partitions); a **paper archive**: shred old boxes, keep the latest file per customer, or move boxes to a cheap warehouse (retention, compaction, tiered storage); a **live scoreboard** rebuilt from the list of goals (Kafka Streams); the **till roll** (CDC); an **office badge** (security); a **car dashboard** (monitoring); a **spare key with a neighbour** (disaster recovery).
 
 ## Queue versus log
 
@@ -63,6 +63,18 @@ updated: "2026-10-21"
 - **Leader serves, followers copy, in-sync followers can take over.** Factor 3 + `min.insync.replicas=2` + `acks=all` survives one broker failure with no loss.
 - **Consumers read only up to the high watermark.** Unclean leader election (off by default) trades data for availability.
 - **KRaft controllers need a majority**: 3 tolerate 1 failure.
+- **Rebalances:** eager stops everyone; cooperative pauses only moving partitions; static membership (`group.instance.id`) means quick restarts don't rebalance. Commit in `onPartitionsRevoked`, never in `onPartitionsLost`.
+- **Errors:** transient = retry with backoff (in place, or retry topics, which can reorder); permanent = dead-letter at once. Never let a poison message block a partition. A dependency outage is not poison: pause instead. A DLT needs alerts, an owner and replay.
+- **Exactly-once** = idempotent producer + transactions (outputs and offsets atomic) + `read_committed` consumers + zombie fencing via `transactional.id`. It covers Kafka-to-Kafka only; databases and APIs need idempotency or the outbox. Kafka Streams: `exactly_once_v2`.
+- **Schemas are contracts:** Avro or Protobuf in a schema registry; messages carry a schema ID; BACKWARD (default) means upgrade consumers first; add optional fields with defaults, never rename or retype; breaking change = new event type.
+- **Planning:** ordering scope first (usually per entity) → key with many even values → partitions ≥ max(t/p, t/c), measured, sized 1–2 years ahead. A hot key stays hot whatever the partition count: shard it or give it its own topic.
+- **Spring Boot:** properties in, beans out; one shared `KafkaTemplate`; listener container = poll + commit + error handler; concurrency × instances ≤ partitions; observation on; real broker in tests.
+- **Storage:** retention for events, compaction (latest per key, tombstones delete) for current state, tiered storage for long history. Disk = volume × days × replication factor.
+- **Kafka Streams:** KStream = events, KTable = latest per key; local RocksDB state backed by changelog topics; joins need co-partitioning. Flink for larger, multi-system processing.
+- **Connect and CDC:** connectors instead of glue code; Debezium reads the binlog (snapshot, then changes); outbox + CDC avoids dual writes; sink DLQ yes, source DLQ no.
+- **Security:** TLS everywhere, one identity per service (SCRAM, mTLS or OAuth), least-privilege ACLs; SASL alone doesn't encrypt.
+- **Monitoring:** page on offline / under-min-ISR partitions and controller ≠ 1; alert on lag **growth** per group; capacity planned and load-tested before peaks.
+- **DR:** zones protect within a region; a second cluster with MirrorMaker 2 (topics + offset checkpoints) protects against region loss; RPO > 0 with async copying; rehearse failover.
 - **Events in the past tense** (`OrderPlaced`), commands in the imperative (`ChargeCard`).
 
 ## Interview corner

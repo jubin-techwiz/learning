@@ -1,11 +1,11 @@
 # Learning Progress Snapshot
 - Subject: Apache Kafka, fundamentals to advanced (series 2.2 inside messaging)
 - Goal: Use Kafka confidently as an engineer, and decide when and how to use it as an architect
-- Status: Learning (resumed 2026-10-21 after finishing the resilience notes)
-- Completed: 2.1 messaging overview (queues vs logs, four design questions), 2.2.1 Kafka big picture, 2.2.2 the log, topics, partitions and offsets, 2.2.3 producers (keys, acks, batching, idempotence), 2.2.4 consumers and consumer groups, 2.2.5 offset commits and delivery guarantees, 2.2.6 brokers, replication and leader election; Kafka fundamentals complete (notes only, no demo app). All notes rewritten in the new learning-flow format on 2026-10-21
+- Status: Done on 2026-10-21 (all 18 notes of the Kafka series written)
+- Completed: 2.1 messaging overview (queues vs logs, four design questions), 2.2.1 Kafka big picture, 2.2.2 the log, topics, partitions and offsets, 2.2.3 producers (keys, acks, batching, idempotence), 2.2.4 consumers and consumer groups, 2.2.5 offset commits and delivery guarantees, 2.2.6 brokers, replication and leader election; Kafka fundamentals complete; intermediate: 2.2.7 rebalancing and static membership, 2.2.8 error handling, retries and DLTs, 2.2.9 idempotent producer and transactions, 2.2.10 schemas and evolution, 2.2.11 ordering and partition planning; advanced: 2.2.12 Spring Boot, 2.2.13 retention/compaction/tiered storage, 2.2.14 Kafka Streams, 2.2.15 Connect and CDC, 2.2.16 security, 2.2.17 monitoring and capacity, 2.2.18 multi-cluster DR (notes only, no demo app). All notes rewritten in the new learning-flow format on 2026-10-21
 - Strong areas: not assessed yet (no exercises attempted; the user prefers teaching without quizzes unless asked)
 - Gaps to revisit: none recorded
 - Environment/setup: Java 21, Maven 3.9; no Kafka cluster or example app (user asked for notes only, no demos unless requested)
 - Last exercise and result: none
-- Next lesson: 2.2.7 Rebalancing and static membership (start of intermediate)
+- Next: RabbitMQ series (2.3) or design patterns (track 3), as the user chooses; revise Kafka from the messaging cheat sheet
 - Note: 2.2.8 (error handling) and 2.2.9 (idempotent producer) build on resilience topics 1.2 to 1.4, which are now written (see resilience.md)

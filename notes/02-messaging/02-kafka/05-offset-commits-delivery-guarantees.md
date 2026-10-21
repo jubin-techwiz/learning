@@ -17,7 +17,7 @@ updated: "2026-10-21"
 
 ## Where it fits
 
-Step 2.2.5 of the [Kafka series](01-kafka-overview.md). It completes [consumers and consumer groups](04-consumers-consumer-groups.md) (2.2.4): the group knows *who* reads each partition; offsets record *how far* it got. It relies on [idempotency](../../01-resilience/04-idempotency.md) from the resilience track. Next: [brokers, replication and leader election](06-brokers-replication-leader-election.md) (2.2.6); exactly-once with transactions comes in 2.2.9.
+Step 2.2.5 of the [Kafka series](01-kafka-overview.md). It completes [consumers and consumer groups](04-consumers-consumer-groups.md) (2.2.4): the group knows *who* reads each partition; offsets record *how far* it got. It relies on [idempotency](../../01-resilience/04-idempotency.md) from the resilience track. Next: [brokers, replication and leader election](06-brokers-replication-leader-election.md) (2.2.6); exactly-once with transactions comes in [2.2.9](09-idempotent-producer-transactions.md).
 
 ## 1. The story
 

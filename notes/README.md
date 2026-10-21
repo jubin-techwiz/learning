@@ -34,7 +34,7 @@ Personal reference notes, one per topic, written in simple language. Each note s
 
 ### 02 · Messaging
 
-In progress (Kafka resumed). Start with the overview (queues versus logs, and the four questions every design must answer). The Kafka series then goes from fundamentals to advanced.
+Kafka series complete. Start with the overview (queues versus logs, and the four questions every design must answer). The Kafka series then goes from fundamentals to advanced.
 
 | Step | Note | Status |
 |---|---|---|
@@ -45,9 +45,21 @@ In progress (Kafka resumed). Start with the overview (queues versus logs, and th
 | 2.2.4 | [Consumers and consumer groups](02-messaging/02-kafka/04-consumers-consumer-groups.md) | Done |
 | 2.2.5 | [Offset commits and delivery guarantees](02-messaging/02-kafka/05-offset-commits-delivery-guarantees.md) | Done |
 | 2.2.6 | [Brokers, replication and leader election](02-messaging/02-kafka/06-brokers-replication-leader-election.md) | Done |
+| 2.2.7 | [Rebalancing and static membership](02-messaging/02-kafka/07-rebalancing-static-membership.md) | Done |
+| 2.2.8 | [Error handling, retries and dead-letter topics](02-messaging/02-kafka/08-error-handling-retries-dlt.md) | Done |
+| 2.2.9 | [Idempotent producer and transactions (exactly-once)](02-messaging/02-kafka/09-idempotent-producer-transactions.md) | Done |
+| 2.2.10 | [Schemas and evolution (Avro, Schema Registry)](02-messaging/02-kafka/10-schemas-evolution.md) | Done |
+| 2.2.11 | [Ordering, partition planning and hot partitions](02-messaging/02-kafka/11-ordering-partition-planning-hot-partitions.md) | Done |
+| 2.2.12 | [Kafka with Spring Boot](02-messaging/02-kafka/12-kafka-with-spring-boot.md) | Done |
+| 2.2.13 | [Retention, log compaction and tiered storage](02-messaging/02-kafka/13-retention-compaction-tiered-storage.md) | Done |
+| 2.2.14 | [Stream processing basics (Kafka Streams)](02-messaging/02-kafka/14-kafka-streams-basics.md) | Done |
+| 2.2.15 | [Kafka Connect and change data capture](02-messaging/02-kafka/15-kafka-connect-cdc.md) | Done |
+| 2.2.16 | [Security: TLS, SASL and ACLs](02-messaging/02-kafka/16-security-tls-sasl-acls.md) | Done |
+| 2.2.17 | [Monitoring, consumer lag and capacity planning](02-messaging/02-kafka/17-monitoring-lag-capacity.md) | Done |
+| 2.2.18 | [Multi-cluster and disaster recovery](02-messaging/02-kafka/18-multi-cluster-disaster-recovery.md) | Done |
 | | [Messaging cheat sheet](02-messaging/99-messaging-cheat-sheet.md) (revision) | Growing |
 
-Planned in this area: the rest of the Kafka series (intermediate and advanced, 2.2.7 to 2.2.18), a RabbitMQ series (2.3.x) and a comparison note, "choosing a messaging system" (2.4).
+**Kafka series complete (2.2.1 to 2.2.18).** Planned in this area: a RabbitMQ series (2.3.x) and a comparison note, "choosing a messaging system" (2.4).
 
 ### Coming next
 

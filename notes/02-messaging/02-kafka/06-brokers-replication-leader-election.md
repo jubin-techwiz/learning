@@ -17,7 +17,7 @@ updated: "2026-10-21"
 
 ## Where it fits
 
-Step 2.2.6, the last fundamentals note of the [Kafka series](01-kafka-overview.md). It explains *why* the [producer's](03-producers-keys-acks-batching.md) `acks=all` and `min.insync.replicas` protect data, and what consumers can safely read. Next: rebalancing and static membership (2.2.7), the start of the intermediate level.
+Step 2.2.6, the last fundamentals note of the [Kafka series](01-kafka-overview.md). It explains *why* the [producer's](03-producers-keys-acks-batching.md) `acks=all` and `min.insync.replicas` protect data, and what consumers can safely read. Next: [rebalancing and static membership](07-rebalancing-static-membership.md) (2.2.7), the start of the intermediate level.
 
 ## 1. The story
 
@@ -171,6 +171,6 @@ NewTopic orders() {
 - Confluent documentation, "KRaft overview"
 - *Kafka: The Definitive Guide* (reliable data delivery)
 
-**Next:** Rebalancing and static membership (2.2.7), the first intermediate topic.
+**Next:** [Rebalancing and static membership](07-rebalancing-static-membership.md) (2.2.7), the first intermediate topic.
 
 Back to [the Kafka overview](01-kafka-overview.md) · [Messaging overview](../01-messaging-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).

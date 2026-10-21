@@ -17,7 +17,7 @@ updated: "2026-10-21"
 
 ## Where it fits
 
-Step 2.2.4 of the [Kafka series](01-kafka-overview.md). It reads from the [log and partitions](02-log-topics-partitions-offsets.md) (2.2.2) that [producers](03-producers-keys-acks-batching.md) (2.2.3) write to. Next: [offset commits and delivery guarantees](05-offset-commits-delivery-guarantees.md) (2.2.5), which decide *when* a consumer's progress is saved; rebalancing gets its own note later (2.2.7).
+Step 2.2.4 of the [Kafka series](01-kafka-overview.md). It reads from the [log and partitions](02-log-topics-partitions-offsets.md) (2.2.2) that [producers](03-producers-keys-acks-batching.md) (2.2.3) write to. Next: [offset commits and delivery guarantees](05-offset-commits-delivery-guarantees.md) (2.2.5), which decide *when* a consumer's progress is saved; rebalancing gets its own note: [rebalancing and static membership](07-rebalancing-static-membership.md) (2.2.7).
 
 ## 1. The story
 
