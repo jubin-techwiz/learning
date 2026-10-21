@@ -46,7 +46,7 @@ Sending a message is like sending a parcel. You hand it to the courier and go on
 | **Message broker** | The middleman that stores and delivers messages | Services no longer need to be up at the same time | Kafka cluster | Queue, log |
 | **Event** | "This happened", for anyone interested | The producer doesn't need to know who reacts | `OrderPlaced` | Command |
 | **Command** | "Do this", for one receiver | Has an owner and an expected action | `ChargeCard` | Event |
-| **Queue** | Each message is taken by one consumer, then removed | Distributes work | RabbitMQ queue, Amazon SQS | Log |
+| **Queue** | Each message goes to one consumer at a time and is removed once acknowledged; if it isn't acknowledged it is redelivered | Distributes work | RabbitMQ queue, Amazon SQS | Log |
 | **Log** | Messages are kept; each reader has its own position | Many readers and replay | Kafka topic | Retention |
 | **Delivery guarantee** | What the system promises about loss and duplication | Drives how consumers must be written | At-least-once | At-most-once, exactly-once |
 | **Eventual consistency** | All parts agree after a short delay | The price of decoupling | Stock updated just after the order | Strong consistency |
@@ -101,8 +101,8 @@ The two families are converging: RabbitMQ has added streams, and Kafka has added
 **Every messaging design must answer four questions:**
 
 1. **Delivery:** may a message be lost, or repeated? Most systems choose **at-least-once**: not lost (as long as it is retried until processed, within retention), sometimes repeated.
-2. **Ordering:** which messages must stay in order? Usually only those for one entity, such as one order.
-3. **Duplicates:** consumers must be **idempotent**, so a repeated message does no harm.
+2. **Ordering:** which messages must stay in order? Usually only those for one entity, such as one order. A queue with several competing consumers, or with redelivery, can reorder messages; a Kafka partition keeps order, but only within that partition.
+3. **Duplicates:** consumers must be **idempotent**, so a repeated message does no extra harm to the state the consumer controls. Effects on other systems (an email, a card charge) need those systems' own idempotency.
 4. **Failures:** a message that keeps failing is retried with backoff, then moved to a **dead-letter queue or topic**.
 
 **Who guarantees what:** the broker stores and delivers messages under its stated guarantee; the application decides keys, handles duplicates and failures, and performs side effects. No broker can make an email or an HTTP call happen exactly once on its own.

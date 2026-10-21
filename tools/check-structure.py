@@ -7,13 +7,17 @@ For every note in notes/:
   - topic notes in the current format have the required sections, numbered without gaps,
     and end with an Answers section;
   - references to existing notes such as "(2.2.11)" are links, not bare numbers
-    (notes that are only planned may stay plain text).
+    (notes that are only planned may stay plain text);
+  - front matter has title, tags, category, level and a valid `updated` date;
+  - the "Step N" label in the position line matches the file's path;
+  - every note is linked from notes/README.md and notes/roadmap.md.
 
 Notes still in the earlier format (with an "Industry check" heading) are reported as
 "old format" instead of failing, so a migration can happen step by step.
 
 Usage: python3 tools/check-structure.py
 """
+import datetime
 import glob
 import os
 import re
@@ -22,7 +26,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 
-REQUIRED = ['The concept in simple English', 'Industry terms', 'In a real system (ShopFlow)',
+REQUIRED = ['The concept in simple English', 'Industry terms', 'In a real system (ShopFlow)', 'How it works',
             'Check your understanding', 'Revision', 'Verification and sources']
 LAB_REFERENCE = re.compile(r'labs/|resilience-demo|circuit-breaker-demo|\bmvn |demo[-\w]*\.sh')
 BARE_STEP = re.compile(r'(?<![\[\d.\w/-])\((\d+\.\d+(?:\.\d+)?)\)')
@@ -68,8 +72,39 @@ for f in sorted(glob.glob('notes/**/*.md', recursive=True)):
     if inside:
         report(f, 'unclosed code block')
 
-    if name in ('README.md', 'roadmap.md') or name[:2] in ('98', '99'):
-        continue                                  # index, roadmap, glossary, cheat sheet: free form
+    if name in ('README.md', 'roadmap.md'):
+        continue
+
+    # front matter
+    fm = re.match(r'---\n(.*?)\n---\n', text, re.S)
+    if not fm:
+        report(f, 'missing front matter')
+    else:
+        keys = dict(re.findall(r'^(\w+):\s*(.*)$', fm.group(1), re.M))
+        for k in ('title', 'tags', 'category', 'level', 'updated'):
+            if k not in keys:
+                report(f, f'front matter is missing "{k}"')
+        if keys.get('level') not in (None, 'fundamentals', 'intermediate', 'advanced'):
+            report(f, f'front matter level "{keys["level"]}" is not fundamentals, intermediate or advanced')
+        if 'updated' in keys:
+            try:
+                d = datetime.date.fromisoformat(keys['updated'].strip('"\''))
+                if d > datetime.date.today():
+                    report(f, f'updated date {d} is in the future')
+            except ValueError:
+                report(f, f'updated "{keys["updated"]}" is not a YYYY-MM-DD date')
+
+    # the position line must carry the step that the path implies
+    expected = step_of(f)
+    if expected:
+        m = re.search(r'^\*\*[^\n]*?Step (\d+(?:\.\d+)*)', text, re.M)
+        if not m:
+            report(f, 'no "Step N" position line')
+        elif m.group(1) != expected:
+            report(f, f'position line says Step {m.group(1)} but the path implies {expected}')
+
+    if name[:2] in ('98', '99'):
+        continue                                  # glossary, cheat sheet: free form
     headings = re.findall(r'^## (.*)$', text, re.M)
     if any('Industry check' in h for h in headings):
         old_format.append(f)
@@ -94,6 +129,15 @@ for f in sorted(glob.glob('notes/**/*.md', recursive=True)):
                 continue
             if not line[:m.start()].rstrip().endswith(')'):     # "[note](x.md) (2.2.3)" is fine
                 report(f, f'line {i}: bare step reference ({m.group(1)}); make it a link')
+
+# every note must be reachable from the index and the roadmap
+for index in ('notes/README.md', 'notes/roadmap.md'):
+    content = open(index, encoding='utf-8').read()
+    linked = {os.path.normpath(os.path.join(os.path.dirname(index), t))
+              for t in re.findall(r'\]\(([^)\s#]+\.md)\)', content)}
+    for f in sorted(glob.glob('notes/**/*.md', recursive=True)):
+        if f not in (index, 'notes/README.md', 'notes/roadmap.md') and f not in linked:
+            report(index, f'does not link to {f}')
 
 for f in old_format:
     print(f'old format (not checked for structure): {f}')

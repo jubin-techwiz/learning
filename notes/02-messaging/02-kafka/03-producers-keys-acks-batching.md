@@ -42,7 +42,7 @@ updated: "2026-10-21"
 | **In-sync replicas (ISR)** | Copies fully caught up with the leader | Only they count for `acks=all` | 2 of 3 in sync | Replication ([2.2.6](06-brokers-replication-leader-election.md)) |
 | **`min.insync.replicas`** | In-sync copies required for an `acks=all` write | Makes `acks=all` meaningful | 2 with replication factor 3 | Acks |
 | **Batching / linger** | Grouping events per partition; waiting briefly to fill a batch | Throughput for a few milliseconds | `linger.ms=10` | Compression |
-| **Idempotent producer** | The broker drops duplicates caused by producer retries | Safe retries, order kept | `enable.idempotence=true` | Transactions ([2.2.9](09-idempotent-producer-transactions.md)) |
+| **Idempotent producer** | The broker drops duplicates caused by producer retries, per partition and within one producer session | Safe retries, order kept; a restarted application gets a new producer ID, so re-sending after a restart is not deduplicated | `enable.idempotence=true` | Transactions ([2.2.9](09-idempotent-producer-transactions.md)) |
 | **Delivery timeout** | Time limit for a send, including all retries | When the producer gives up | `delivery.timeout.ms` | `request.timeout.ms` |
 
 ## 4. In a real system (ShopFlow)
@@ -186,7 +186,7 @@ Answers are at the end of this note.
 
 **Likely follow-up questions:**
 - **What happens when `min.insync.replicas` can't be met?** The write is refused with an error instead of being stored with too few copies.
-- **How does the idempotent producer avoid duplicates?** Each producer has an ID and numbers its batches per partition; the broker drops a sequence number it has already written.
+- **How does the idempotent producer avoid duplicates?** Each producer has an ID and numbers its batches per partition; the broker drops a sequence number it has already written. This covers retries within one producer session, not an application that restarts and sends the same business event again.
 - **How do you make sure an order event is never lost end to end?** Safe producer settings, handled send results, an outbox for the database-plus-event case, and consumers that commit only after processing ([2.2.5](05-offset-commits-delivery-guarantees.md)).
 
 **Architect's takeaway:** choose the producer profile per event type from the cost of losing it versus the cost of delay, and make the safe profile the default.
@@ -199,6 +199,7 @@ Answers are at the end of this note.
 > Checked 2026-10-21 by web search. Re-verify when you revisit this note.
 
 - **Confirmed:** the safe baseline `acks=all`, replication factor 3, `min.insync.replicas=2`, and writes failing with an error when the minimum can't be met (Red Hat and Confluent documentation); the idempotent producer uses a producer ID and sequence numbers and keeps order with up to 5 in-flight requests; `linger.ms` defaults to 0 up to Kafka 3.9 and 5 ms from 4.0 (KIP-1030); `max.block.ms` defaults to 60 s and bounds how long `send` waits for buffer space and metadata; since Kafka 3.0 (KIP-679) the producer defaults are `acks=all` and `enable.idempotence=true`, but a bug in early 3.x releases (KAFKA-13598) left idempotence off unless set explicitly, and Kafka Connect disables idempotence for its producers by default (Apache Kafka 3.0 and 3.1 upgrade notes).
+- **Observed (Kafka 4.3.2 client libraries, 2026-10-21):** `acks` all, `enable.idempotence` true, `linger.ms` 5, `max.block.ms` 60000, `batch.size` 16384, `delivery.timeout.ms` 120000, `request.timeout.ms` 30000, `max.in.flight.requests.per.connection` 5, `retries` 2147483647 (read from the producer's configuration definitions).
 - **Assumptions and illustrations:** the ShopFlow story; the code (not run).
 - **To verify:** the exact releases that fixed KAFKA-13598, if you run an early 3.x client (set `enable.idempotence=true` explicitly to be safe).
 - **Also confirmed:** `batch.size` defaults to 16,384 bytes and `delivery.timeout.ms` to 120,000 ms; keyless records use a sticky partitioner since Kafka 2.4, made strictly uniform in 3.3 (KIP-794) (Apache Kafka producer configuration; KIP-794).

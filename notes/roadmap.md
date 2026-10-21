@@ -58,9 +58,10 @@ Why: every service you build calls something that will eventually fail. These pa
 | 1.8 | [Load shedding and backpressure](01-resilience/08-load-shedding-backpressure.md) | Architect | Done |
 | 1.9 | [Fallbacks and graceful degradation](01-resilience/09-fallbacks-graceful-degradation.md) | Both | Done |
 | 1.10 | [Testing resilience (chaos engineering)](01-resilience/10-testing-resilience.md) | Both | Done |
+| 1.99 | [Resilience cheat sheet (revision)](01-resilience/99-resilience-cheat-sheet.md) | Both | Done |
 
 > [!NOTE]
-> The whole track is written. Steps 1.5 and 1.6 were written before 1.2 to 1.4, so for the cleanest understanding read the notes in numbered order. The track has notes only, with no demo app; one can be added later if you ask for hands-on practice.
+> The whole track is written. Steps 1.5 and 1.6 were written before 1.2 to 1.4, so for the cleanest understanding read the notes in numbered order. The notes are self-contained; hands-on demos are optional and kept outside these notes. Notes 1.1 to 1.3 use the current note format; 1.4 to 1.10 are being migrated.
 
 ### 2. Messaging and event-driven design
 Why: events decouple teams and services, but they bring ordering, duplicate and consistency problems.

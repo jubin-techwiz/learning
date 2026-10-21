@@ -65,7 +65,7 @@ sequenceDiagram
     Note over W: emails 45 to 49 never sent
 ```
 
-**How commits help.** Commit only after the work is really done, and make the work safe to repeat. Then a crash means "repeat some events", never "lose them".
+**How commits help.** Commit only after the work is really done, and make the work safe to repeat. Then a crash means "repeat some events", not "lose them". Repeating is only harmless for effects you can make idempotent; the next sections say which those are.
 
 **What it costs.** Duplicates become normal, so every consumer needs a deduplication strategy, and some side effects (email, payments) need special care because they can't join a database transaction.
 
@@ -137,7 +137,8 @@ public void apply(OrderPlaced e) {
 - **Why?** The database and Kafka are separate systems; there is no shared transaction.
 - **What the business sees:** nothing bad, *if* the deduplication record was written in the same database transaction: the event is redelivered and skipped.
 - **Solutions:** store the processed-event ID (or the offset itself) in the same database transaction as the business change.
-- **Trade-offs:** an extra table and a unique key; old IDs need clean-up.
+- **Boundary:** this protects only what happens **inside that database transaction**. If the same handler also calls an email provider or another service, the dedupe row does not stop that call being repeated: the call can succeed and the transaction then roll back (or the process die before it commits), and the redelivered event will make the call again.
+- **Trade-offs:** an extra table and a unique key; the stored IDs must be kept longer than any redelivery or replay window you support, then cleaned up; two members processing the same event at once are stopped only by the unique constraint (one transaction fails and is retried).
 
 ### External call succeeded, crash before recording it
 
@@ -159,7 +160,7 @@ public void apply(OrderPlaced e) {
 |---|---|---|
 | Commit before processing | May **skip** events (at-most-once) | Rare: data where repeats are worse than loss |
 | Auto-commit, synchronous processing | May **repeat** events (at-least-once) | Simple consumers with idempotent work |
-| **Manual commit after processing + idempotent consumer** | Repeats are harmless | **Business events (the default)** |
+| **Manual commit after processing + idempotent consumer** | Repeats are harmless for effects inside the deduplicated transaction; external effects still need their own idempotency | **Business events (the default)** |
 | Kafka transactions | Exactly-once for topic-to-topic work | Stream processing ([2.2.9](09-idempotent-producer-transactions.md)) |
 
 - **Per record or per batch?** Per record shrinks the repeat window but costs more commits; per batch is cheaper. Both are fine with idempotent processing.
@@ -200,7 +201,7 @@ Answers are at the end of this note.
 - Auto-commit is safe only when each batch is finished before the next poll.
 - **External side effects** (email, HTTP) can't join your database transaction: choose duplicate over loss, or use the provider's idempotency key.
 
-**Explain in 15 seconds:** "Consumers commit offsets to save progress; committing after processing gives at-least-once delivery, and idempotent processing makes the repeats harmless."
+**Explain in 15 seconds:** "Consumers commit offsets to save progress; committing after processing gives at-least-once delivery, and idempotent processing makes the repeats harmless for the state the consumer controls; external calls need their own safeguard."
 
 **Explain in 60 seconds:**
 > "A consumer's progress is its committed offset per partition, the next event to read. Commit before processing and a crash skips events; commit after and a crash repeats them. For business events I commit after processing and make the consumer idempotent, for example by recording the event ID in the same database transaction as the change, so a redelivered event is skipped. Auto-commit is only safe if every record is finished before the next poll. External side effects like emails can't join that transaction, so I choose the lesser harm, usually a rare duplicate, or use the provider's idempotency key."

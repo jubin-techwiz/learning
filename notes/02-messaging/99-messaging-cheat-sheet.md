@@ -32,8 +32,8 @@ The line is blurring: RabbitMQ has streams, and Kafka's queue-style **share grou
 | Question | Usual answer |
 |---|---|
 | Delivery? | At-least-once, with idempotent consumers |
-| Ordering? | Only inside one queue or partition; use a key |
-| Duplicates? | Idempotent consumer (dedupe by event ID, upserts) |
+| Ordering? | Kafka: only within a partition (use a key). Queue: only with one consumer and no redelivery; competing consumers or retries can reorder |
+| Duplicates? | Idempotent consumer for your own state (dedupe by event ID, upserts); the provider's idempotency key for external calls |
 | Failures? | Retry transient errors with backoff; dead-letter permanent ones |
 
 ## Who guarantees what

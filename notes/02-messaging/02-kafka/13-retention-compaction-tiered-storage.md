@@ -188,7 +188,8 @@ Answers are at the end of this note.
 
 - **Confirmed:** `cleanup.policy=compact` retains by key rather than age; tombstones (null values) delete keys; `delete.retention.ms` defaults to 24 hours; tiered storage (KIP-405, broker setting `remote.log.storage.system.enable`) was early access from Kafka 3.6 and production-ready from 3.9; it is off by default, Apache Kafka ships no remote-storage plug-in, and it supports delete-retention topics; compacted topics in tiered storage (KIP-1272) were still under discussion; with tiering on, compaction applies to local segments only.
 - **Assumptions and illustrations:** the ShopFlow story; sizing figures are arithmetic examples.
-- **To verify:** the known limitations in the Kafka 3.9 tiered-storage release notes and your plug-in's documentation; default `min.compaction.lag.ms`; which internal topics use compaction.
+- **Observed (Kafka 4.3.2 broker, 2026-10-21):** a new topic had `cleanup.policy=delete`, `retention.ms` 604800000 (7 days), `segment.bytes` 1073741824, `delete.retention.ms` 86400000 (24 hours) and `min.compaction.lag.ms` 0; the broker's `log.cleaner.backoff.ms` was 15000.
+- **To verify:** the known limitations in the Kafka 3.9 tiered-storage release notes and your plug-in's documentation; which internal topics use compaction.
 - **Decision rule:** retention for events, compaction for current state, tiered storage for long, rarely read history.
 
 **Sources:** Apache Kafka documentation (log compaction, topic configuration); KIP-405; KIP-1272.

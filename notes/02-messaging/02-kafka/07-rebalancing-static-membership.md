@@ -86,7 +86,7 @@ flowchart LR
 
 1. **What starts it:** a member joins, leaves, or misses its heartbeat or poll deadline; or partitions or subscriptions change.
 2. **Eager:** all members give up all partitions, a new plan is agreed, everyone restarts on the new partitions.
-3. **Cooperative:** members give up only partitions that must move; a second short round assigns them; everything else keeps processing.
+3. **Cooperative:** members give up only partitions that must move; a second short round assigns them; everything else keeps processing. It is **not the default**: the default assignor list is `[RangeAssignor, CooperativeStickyAssignor]`, and a group negotiates the first one all members support, which is `range` (eager). To get cooperative rebalancing, list only `CooperativeStickyAssignor` (changing a live group is done in two rolling restarts: first list both, then remove `RangeAssignor`) or use the new protocol.
 4. **Static membership:** a member with a `group.instance.id` that returns within the session timeout keeps its partitions without a rebalance.
 5. **Listener callbacks:** `onPartitionsRevoked` (commit your offsets so the next owner doesn't repeat work), `onPartitionsAssigned` (prepare), `onPartitionsLost` (partitions taken without a clean handover; **don't commit**, another member may own them).
 6. **Who commits on revoke:** in Spring Kafka the listener container commits pending offsets itself when partitions are revoked; with the plain Java client, your rebalance listener must do it.
@@ -113,7 +113,7 @@ spring:
 
 - **What happened?** Every pod restart triggered an eager rebalance of the whole group.
 - **What the business sees:** lag spikes after every release; delayed stock reservations.
-- **Solutions:** cooperative sticky assignment (or the new protocol); static membership.
+- **Solutions:** cooperative sticky assignment, switched on explicitly because the default is still `range` (or the new protocol); static membership.
 - **Trade-offs:** static membership delays detection of truly dead pods.
 
 ### Slow processing causes a rebalance storm
@@ -195,7 +195,8 @@ Answers are at the end of this note.
 
 - **Confirmed:** under eager rebalancing all partitions are given up; cooperative rebalancing (KIP-429, the cooperative sticky assignor, since Kafka 2.4) gives up only moving partitions over two rounds; upgrades from 2.3 or earlier need a specific path. A static member (`group.instance.id`) keeps its slot until the session timeout instead of triggering a rebalance. Javadoc: `onPartitionsLost` may run after others own the partitions, so commits may fail there; Kafka recommends committing in the revoke callback; with cooperative rebalancing, revoke and lost callbacks fire only for non-empty sets. KIP-848 is generally available in Kafka 4.0. Spring Kafka's container commits pending offsets during revocation; its `onPartitionsRevokedAfterCommit` hook runs after that commit (Spring for Apache Kafka reference, rebalance listeners).
 - **Assumptions and illustrations:** the ShopFlow story; configuration and commands (not run).
-- **To verify:** the default `partition.assignment.strategy` in your client version; whether static membership (KIP-345) arrived in Kafka 2.3 or 2.4 (sources disagree); console tool options.
+- **Observed (Kafka 4.3.2, 2026-10-21):** the client's default `partition.assignment.strategy` is `[RangeAssignor, CooperativeStickyAssignor]`; two default consumers in a group reported the assignment strategy `range`, and two consumers configured with `CooperativeStickyAssignor` only reported `cooperative-sticky` (`kafka-consumer-groups.sh --describe --state`). The two-restart upgrade path is from KIP-429 and KIP-726 and was not tested here.
+- **To verify:** whether static membership (KIP-345) arrived in Kafka 2.3 or 2.4 (sources disagree); console tool options.
 - **Decision rule:** cooperative assignment (or the new protocol), static membership for stable pods, commit on revoke, fast poll loops, calm autoscaling.
 
 **Sources:** Apache Kafka `ConsumerRebalanceListener` Javadoc; KIP-429, KIP-345, KIP-848; *Kafka: The Definitive Guide*.

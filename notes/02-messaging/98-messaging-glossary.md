@@ -24,14 +24,14 @@ The canonical definitions for the messaging area. Notes may shorten these but ne
 | **Consumer** | The application that receives messages | Decides how to process, acknowledge and handle failures | Notification Service reading `OrderPlaced` | Subscriber, consumer group |
 | **Event** | A message saying something happened (past tense) | Producers don't need to know who reacts | `OrderPlaced` | Command |
 | **Command** | A message asking one receiver to do something | Implies an owner and an expected action | `ChargeCard` | Event |
-| **Queue** | Messages wait; each is taken by one consumer and then removed | Distributes work; no replay by default | RabbitMQ queue, Amazon SQS | Log, competing consumers |
+| **Queue** | Messages wait; each is delivered to one consumer at a time and removed once acknowledged; unacknowledged messages are redelivered | Distributes work; no replay by default; with competing consumers or redelivery, order is not guaranteed | RabbitMQ queue, Amazon SQS | Log, competing consumers |
 | **Log** | Messages are appended and kept; each reader keeps its own position | Many independent readers and replay | Kafka topic | Queue, retention |
 | **Delivery guarantee** | What a system promises about loss and duplication | Drives idempotency and failure handling | At-least-once | At-most-once, exactly-once |
 | **At-most-once** | May lose a message, never repeats it | Acceptable only for data you can lose | Committing before processing | At-least-once |
 | **At-least-once** | Doesn't lose a message, may repeat it; holds only while the message is retained and retried until processed | The usual choice; needs idempotent consumers | Committing after processing | Idempotent consumer |
 | **Exactly-once** | Each message's effect happens once | Kafka offers it for Kafka-to-Kafka processing only | Kafka transactions, Kafka Streams | Effectively once |
 | **Effectively once** | Messages may arrive more than once, but their effect happens once | What most business systems actually need | At-least-once delivery + idempotent consumer | Exactly-once |
-| **Idempotent consumer** | Handles the same message twice without a second effect | Makes at-least-once safe | Processed-events table with a unique key | Deduplication, idempotency key |
+| **Idempotent consumer** | Handles the same message twice without a second effect on the state it controls | Makes at-least-once safe for that state; external systems need their own idempotency | Processed-events table with a unique key | Deduplication, idempotency key |
 | **Poison message** | A message that will always fail processing | Can block a partition or queue | Malformed product code | Dead-letter topic |
 | **Dead-letter topic (DLT) / queue (DLQ)** | Where messages that can't be processed are parked with error details | Keeps the main flow moving; needs an owner | `order-events.DLT` (name depends on configuration) | Retry topic, replay |
 | **Backpressure** | A "slow down" signal from a busy receiver to the sender | Prevents unbounded queues and overload | Kafka consumers pull only what they can process | Load shedding |
@@ -51,7 +51,7 @@ The canonical definitions for the messaging area. Notes may shorten these but ne
 | **Hot partition** | A partition getting far more traffic than the rest | One consumer falls behind; more partitions don't help | A huge seller's ID as key | Key sharding |
 | **Acks** | Who must confirm a write: none, the leader, or all in-sync replicas | Decides durability versus latency | `acks=all` | `min.insync.replicas` |
 | **Batching / linger** | Grouping events per partition; waiting briefly to fill a batch | Throughput for a little latency | `linger.ms=10` | Compression |
-| **Idempotent producer** | The broker drops duplicates caused by producer retries | Safe retries, order kept | `enable.idempotence=true` | Transactions |
+| **Idempotent producer** | The broker drops duplicates caused by producer retries, within one producer session | Safe retries, order kept; not protection against an application re-sending after a restart | `enable.idempotence=true` | Transactions |
 | **Transaction / fencing** | Writes and consumed offsets become visible together or not at all; an older producer with the same `transactional.id` is rejected | Exactly-once pipelines without "zombie" writers | `ProducerFencedException` | `read_committed` |
 | **Retention** | Deleting old segments by age or size | Sets how far back replay can go | 7 days | Log compaction |
 | **Log compaction** | Keeping at least the latest value per key | Topics that hold current state | Customer profiles | Tombstone |
@@ -64,7 +64,7 @@ The canonical definitions for the messaging area. Notes may shorten these but ne
 
 | Term | Simple meaning | Why it matters | Example | Related terms |
 |---|---|---|---|---|
-| **Consumer group** | Consumers sharing a topic's partitions; one member per partition | Parallelism and independent readers | `inventory-service` group | Rebalance |
+| **Consumer group** | Consumers sharing a topic's partitions; at any moment each partition is assigned to one member | Parallelism and independent readers | `inventory-service` group | Rebalance |
 | **Consumer lag** | How far a group is behind the newest events | The consumer's health signal | Notification lag growing | Lag growth rate |
 | **Committed offset** | The saved position of a group: the next event to read | Where reading resumes after a restart | Commit 43 after processing 42 | Auto-commit |
 | **Auto-commit** | The client commits offsets periodically while polling | Simple, but only safe with synchronous processing | `enable.auto.commit=true` | Manual commit, ack mode |

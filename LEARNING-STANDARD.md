@@ -51,10 +51,10 @@ Every topic note follows this progression:
 | 1 | **The concept in simple English** | Yes | What is it? Why do we need it? When would I meet it? Memory hook |
 | 2 | **Mental model** | When an analogy genuinely helps | The analogy, a mapping table to the real components, and where the analogy stops being accurate |
 | 3 | **Industry terms** | Yes | Only the terms this topic needs, in the five-column format (section 5) |
-| 4 | **In a real system (ShopFlow)** | Yes | Business problem first, then how the concept solves it, then what it costs; a "before" diagram where a picture helps; then an **Elsewhere** line with two or three short cases from other industries |
-| 5 | **How it works** | Yes | Diagram or numbered flow; who guarantees what; small explained code |
+| 4 | **In a real system (ShopFlow)** | Yes | Business problem first, then how the concept solves it, then what it costs; a "before" diagram only where a picture helps; optionally an **Elsewhere** line with short cases from other industries, when they add understanding |
+| 5 | **How it works** | Yes | A numbered flow (what starts it, who takes part, what happens on success and failure); a diagram only if it shows an interaction, sequence, state or decision; "who guarantees what" when several layers are involved; code only if it teaches something the text can't |
 | 6 | **Failure scenarios** | When failures are part of the topic | One to three concrete cases in the five-part format (section 9) |
-| 7 | **Architectural decisions** | For substantial concepts | When to use, when not, alternatives, and only the dimensions that matter; a one-line **Common mistakes** list |
+| 7 | **Architectural decisions** | For substantial concepts | When to use, when not, alternatives, and only the dimensions that matter; an optional one-line **Common mistakes** list for gotchas not covered as failure scenarios |
 | 8 | **Try it yourself** | Optional | A small predict-then-run experiment, with honest status |
 | 9 | **Check your understanding** | Yes | Three to five questions; answers at the end of the note |
 | 10 | **Revision** | Yes | Remember, 15-second answer, 60-second answer, likely follow-up questions (optional), architect's takeaway, next topic |
@@ -63,7 +63,9 @@ Every topic note follows this progression:
 
 **Numbering when sections are left out.** Number the sections that are present, in this order, without gaps. A note without "Try it yourself" therefore has Check your understanding as section 8, Revision as 9 and Verification as 10. Keep the section names unchanged so notes stay easy to scan.
 
-**Length.** Aim for the shortest note that gives complete understanding with its important conditions. As a guide, 1,000 to 2,000 words of prose, not counting code, diagrams and tables; fundamentals usually need more words than advanced notes that build on them. Never pad a note to reach a number. Cut repetition and generic advice before cutting explanation, failure cases or conditions.
+**Proportionality.** The order of the progression is fixed; the amount in each step is not. A small topic may need no analogy, no diagram, no code, no failure scenarios and no "Elsewhere" line; say what matters and stop. The sections that are always present are: the concept in simple English, industry terms (only those the topic needs), the ShopFlow example, the numbered flow of how it works, check your understanding, revision and verification. Everything else appears only when it earns its place. Never add a diagram, analogy, code block, industry example or extra paragraph just to fill a slot, or to reach a word count.
+
+**Length.** Aim for the shortest note that gives complete understanding with its important conditions. As a rough ceiling, up to about 2,000 words of prose (not counting code, diagrams and tables); many topics need far fewer. The number is never a target, and a short note is not a defect. Cut repetition and generic advice before cutting explanation, failure cases or conditions.
 
 ## 4. How to explain a concept
 

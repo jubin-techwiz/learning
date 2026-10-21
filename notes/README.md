@@ -100,7 +100,7 @@ The authoring rules live in `LEARNING-STANDARD.md` at the repository root (outsi
 | **The concept in simple English** | What it is, why we need it, when you meet it, and a memory hook |
 | **Mental model** | An everyday analogy mapped to the real parts, and where the analogy breaks |
 | **Industry terms** | The vocabulary interviewers and colleagues use, with simple meanings and examples |
-| **In a real system (ShopFlow)** | The business problem first, then how the concept helps and what it costs, plus short cases from other industries ("Elsewhere") |
+| **In a real system (ShopFlow)** | The business problem first, then how the concept helps and what it costs, optionally short cases from other industries ("Elsewhere") |
 | **How it works** | A diagram, the flow step by step, who guarantees what, and a small explained example |
 | **Failure scenarios** | What goes wrong, why, what users see, the fix and its trade-offs |
 | **Architectural decisions** | When to use it, when not, the alternatives, and common mistakes |
@@ -109,7 +109,7 @@ The authoring rules live in `LEARNING-STANDARD.md` at the repository root (outsi
 | **Revision** | Remember, a 15-second and a 60-second explanation, likely interview follow-up questions, the architect's takeaway, the next topic |
 | **Verification and sources** | What was checked, against which versions, and what still needs verifying |
 
-Sections that don't apply are left out and the rest are renumbered, so section numbers can differ slightly between notes.
+Only the concept, the terms, the ShopFlow example, how it works, the questions, the revision and the verification are always present; analogies, diagrams, code, failure scenarios and the other parts appear only where they help, and the sections are renumbered, so numbers can differ slightly between notes.
 
 > [!NOTE]
 > The messaging notes (2.1 to 2.2.18) and resilience notes 1.1 to 1.3 use this format. Resilience notes 1.4 to 1.10 still use the earlier format (story, idea, key terms, interview corner, industry check); their content is complete and is being migrated.

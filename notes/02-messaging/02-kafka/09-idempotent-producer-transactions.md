@@ -38,7 +38,7 @@ updated: "2026-10-21"
 | Term | Simple meaning | Why it matters | Example | Related terms |
 |---|---|---|---|---|
 | **Exactly-once semantics (EOS)** | Each input's effect appears once in the output | Within Kafka only | Kafka Streams `exactly_once_v2` | Effectively once |
-| **Idempotent producer** | The broker drops duplicates from producer retries | Safe retries | `enable.idempotence=true` | Producer ID, sequence numbers |
+| **Idempotent producer** | The broker drops duplicates from producer retries, within one producer session | Safe retries; a restart starts a new session | `enable.idempotence=true` | Producer ID, sequence numbers |
 | **Transaction** | Writes and offset commits made visible together | No partial results | Output plus offsets | Commit, abort |
 | **`transactional.id`** | A stable name for a transactional producer | Enables fencing across restarts | `stock-reservation-0` | Epoch |
 | **Fencing** | Rejecting an older producer with the same ID | Stops "zombie" instances writing | `ProducerFencedException` | Epoch |

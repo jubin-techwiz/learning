@@ -66,4 +66,4 @@ Folder and file numbers form the step number, so alphabetical order is learning 
 
 ## Version control
 
-This folder is a git repository with a private GitHub remote. Commit when you want a checkpoint of your notes.
+This folder is a git repository. Its `origin` remote is the private GitHub repository `jubin-techwiz/learning`, reached through the `github.com-work` SSH alias (the machine has two GitHub accounts, so use that alias, not plain `github.com`). Work happens on `main`; commit and push only when you decide to (an assistant should not commit or push unless asked).

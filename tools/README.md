@@ -10,7 +10,7 @@ KENMORA_WEB=<path to kenmora>/web ./tools/check-notes.sh           # plus Kenmor
 | Script | Checks | Needs |
 |---|---|---|
 | `check-links.py` | Every relative link resolves; notes link only inside `notes/` | Python 3 |
-| `check-structure.py` | Code fences closed and tagged; no lab paths or commands in notes; required sections, numbered without gaps, ending with Answers; references to existing notes are links | Python 3 |
+| `check-structure.py` | Code fences closed and tagged; no lab paths or commands in notes; front matter complete with a valid `updated` date; the "Step N" label matches the file path; required sections, numbered without gaps, ending with Answers; references to existing notes are links; every note is linked from `notes/README.md` and `notes/roadmap.md` | Python 3 |
 | `render-check.ts` | Every note renders in Kenmora's own pipeline without warnings | Kenmora's `web` folder with `node_modules` (`npx vite-node`) |
 | `mermaid-check.mjs` | Every Mermaid diagram parses with Kenmora's Mermaid version | Kenmora's `web` folder with `node_modules` |
 | `check-notes.sh` | Runs all of the above; exits non-zero if any fails | As above |

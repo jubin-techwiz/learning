@@ -21,9 +21,9 @@ A reusable, technology-neutral prompt for an AI assistant writing or revising a 
 - Use diagrams only to show interactions, sequences, states, decisions or failures; keep them small and valid Mermaid.
 - Keep code small and explained, and label it as an untested sketch or as run on stated versions.
 - Add a "Try it yourself" section only if running something teaches more than reading; mark its real status.
-- Write three to five questions that test understanding, and put the answers at the end of the note. Add three to five interview follow-up questions with one-line answers in the revision section.
-- Add an "Elsewhere" line with two or three cases from other industries, and a one-line "Common mistakes" list under the architectural decisions.
-- Make every reference to another note a relative link; keep the note to about 1,000 to 2,000 words of prose, without padding.
+- Write three to five questions that test understanding, and put the answers at the end of the note. Optionally add three to five interview follow-up questions with one-line answers in the revision section.
+- Add an "Elsewhere" line, a "Common mistakes" line, an analogy, a diagram or code only when each genuinely helps this topic; a simple topic should stay short. Never pad to reach a length.
+- Make every reference to another note a relative link.
 - Never invent statistics, results, citations or verification status. Avoid absolutes that are only conditionally true.
 
 **Before finishing:**

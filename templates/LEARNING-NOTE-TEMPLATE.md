@@ -8,7 +8,7 @@ updated: "<YYYY-MM-DD>"
 
 # <Topic name>
 
-<!-- Number the sections that are present, without gaps: if section 2, 6, 7 or 8 is deleted, renumber the rest. Every reference to another note is a relative link. -->
+<!-- Always keep: 1 concept, 3 industry terms (only those needed), 4 real system, 5 how it works (numbered flow), the questions, revision, verification and Answers. Everything else is optional: delete it when it adds nothing, and never pad a short topic. Number the sections that are present, without gaps: if section 2, 6, 7 or 8 is deleted, renumber the rest. Every reference to another note is a relative link. -->
 
 **<Area> · <Series, if any> · Step <N.N.N> · <Level>** · Last updated <YYYY-MM-DD>
 **Prerequisites:** [<earlier note>](<relative link>), [<earlier note>](<relative link>)
@@ -58,9 +58,12 @@ updated: "<YYYY-MM-DD>"
 
 **What it costs.** <The trade-offs it introduces.>
 
+<!-- Optional. Delete if it adds nothing. -->
 **Elsewhere:** <two or three short, generic cases from other industries (payments, ride-hailing, streaming, IoT); never claim how a named company works internally without a source>
 
 ## 5. How it works
+
+<!-- The diagram is optional: keep it only if it shows an interaction, sequence, state, decision or failure that text can't. The numbered steps and the code block are likewise only as long as the topic needs. -->
 
 ```mermaid
 <Sequence, flow or state diagram of the mechanism, including the failure path where relevant.>
@@ -110,6 +113,7 @@ updated: "<YYYY-MM-DD>"
 
 <Reliability, ordering, scale, operations, security, observability or cost, whichever matter here.>
 
+<!-- Optional. -->
 **Common mistakes:** <one line, semicolon-separated: the gotchas not already covered as failure scenarios>
 
 ## 8. Try it yourself

@@ -13,7 +13,7 @@ updated: "2026-10-21"
 
 ## 1. The concept in simple English
 
-**What is it?** A **consumer** reads events from a topic in a loop. Consumers that share a `group.id` form a **consumer group**, which splits the topic's partitions between its members: each partition is read by exactly one member.
+**What is it?** A **consumer** reads events from a topic in a loop. Consumers that share a `group.id` form a **consumer group**, which splits the topic's partitions between its members: at any moment each partition is read by exactly one member of the group (a rebalance or a member that has lost its session can briefly blur this, which is one reason duplicates happen).
 
 **Why do we need it?** One consumer can't keep up with a busy topic. A group spreads the work while keeping each partition's order, and separate groups let different applications read the same events independently.
 
@@ -191,7 +191,7 @@ Answers are at the end of this note.
 **Explain in 15 seconds:** "Consumers with the same group.id share a topic's partitions, one member per partition, so a group scales up to the partition count, and different groups read the same data independently."
 
 **Explain in 60 seconds:**
-> "A Kafka consumer polls batches in a loop. Consumers with the same group ID form a consumer group, and the coordinator assigns each partition to exactly one member, giving parallelism up to the partition count while keeping per-partition order. Different groups have their own offsets, so many applications can read the same topic. Members must keep polling and heartbeating; if processing exceeds the max poll interval, the member is removed and the group rebalances, which pauses work and can cause duplicates. I size consumers to partitions, use one group per application, keep the poll loop fast and alert on lag."
+> "A Kafka consumer polls batches in a loop. Consumers with the same group ID form a consumer group, and the coordinator assigns each partition to one member at a time, giving parallelism up to the partition count while keeping per-partition order. Different groups have their own offsets, so many applications can read the same topic. Members must keep polling and heartbeating; if processing exceeds the max poll interval, the member is removed and the group rebalances, which pauses work and can cause duplicates. I size consumers to partitions, use one group per application, keep the poll loop fast and alert on lag."
 
 **Likely follow-up questions:**
 - **What triggers a rebalance?** A member joining or leaving, missed heartbeats, or a missed poll deadline ([2.2.7](07-rebalancing-static-membership.md)).
@@ -210,7 +210,8 @@ Answers are at the end of this note.
 - **Confirmed:** `max.poll.interval.ms` defaults to 300000 (5 minutes); `session.timeout.ms` defaults to 45 s from Kafka 3.0 (10 s before); `heartbeat.interval.ms` defaults to 3 s; `max.poll.records` defaults to 500 (Apache and Confluent configuration references). KIP-848 is generally available in Kafka 4.0, enabled on the broker by default, with clients opting in via `group.protocol=consumer`; some classic client settings are not supported with it.
 - **Assumptions and illustrations:** the ShopFlow story; the code and commands (not run).
 - **Also confirmed:** `auto.offset.reset` defaults to `latest` in the Java client (Apache Kafka consumer configuration).
-- **To verify:** the default partition assignor list in your version (KIP-726 changed it in Kafka 3.0; sources disagree on the order); your client library's KIP-848 support.
+- **Observed (Kafka 4.3.2 client libraries, 2026-10-21):** `session.timeout.ms` 45000, `heartbeat.interval.ms` 3000, `max.poll.interval.ms` 300000, `max.poll.records` 500, `enable.auto.commit` true, `auto.commit.interval.ms` 5000, `auto.offset.reset` latest, `isolation.level` read_uncommitted, `partition.assignment.strategy` `[RangeAssignor, CooperativeStickyAssignor]` (read from the client's configuration definitions; earlier-version values are as cited above).
+- **To verify:** your client library's KIP-848 support.
 - **Decision rule:** one group per application, consumers sized to partitions, a fast poll loop with timeouts, lag alerts.
 
 **Sources:** Apache Kafka consumer configuration and "Consumer Rebalance Protocol" documentation; Confluent blog on KIP-848; *Kafka: The Definitive Guide*.
