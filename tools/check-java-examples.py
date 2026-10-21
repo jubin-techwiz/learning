@@ -13,6 +13,10 @@ method). The text between the end of the block and the next fenced block must co
     **Example output**    -> the output varies between runs; the program must still compile
                              and exit with status 0, but the output is not compared.
 
+Expected output must contain only behaviour the specification guarantees; implementation
+details and timing-dependent output belong in an **Example output** block (LEARNING-STANDARD.md,
+section 8).
+
 Each example is run in its own temporary folder with the JDK's single-file source launcher
 (`java OrderTotals.java`), so it must not depend on any other file. Blocks without the marker
 line are snippets and are not run.

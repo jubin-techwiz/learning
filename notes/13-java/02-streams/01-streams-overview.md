@@ -22,7 +22,7 @@ Read this first. It is the map of the Streams series: what a stream is, why it e
 **When would I meet it?** Processing collections, reading lines of a file, turning entities into DTOs, grouping and summarising data, and any code review that says "why not a stream?".
 
 > [!TIP]
-> **Memory hook:** a conveyor belt with a start button. Items pass through stations one at a time, nothing moves until you press start, and the belt can run only once.
+> **Memory hook:** a conveyor belt with a start button. Nothing moves until you press start, the belt can run only once, and (on a sequential stream) items pass through the stations one at a time.
 
 ## 2. Mental model: a conveyor belt
 
@@ -116,7 +116,7 @@ paid revenue = EUR 225.00
 paying customers = [ana, cy]
 ```
 
-**Walkthrough.** Nothing happens while the pipeline is being described. When `sum()` runs, each order travels through the steps in turn:
+**Walkthrough.** Nothing happens while the pipeline is being described. When `sum()` runs, each order of this sequential stream travels through the steps in turn:
 
 | Order | `filter`: is it `PAID`? | `mapToLong`: amount passed on | Running sum |
 |---|---|---|---|
@@ -144,7 +144,7 @@ flowchart LR
 1. You create a stream from a source.
 2. You chain intermediate operations; each returns a new stream and does no work yet.
 3. You call a terminal operation; only now does the source start producing elements.
-4. Elements flow through the stations one at a time, and the result comes out of the terminal operation.
+4. In a sequential stream, elements flow through the stations one at a time and the result comes out of the terminal operation. A parallel stream may process several elements at once and in any order, although results such as `toList()` keep the source's order ([13.2.2](02-pipeline-laziness.md) shows which guarantees hold).
 5. The stream is now used up; start again from the source for another run.
 
 The next note, [13.2.2](02-pipeline-laziness.md), proves each of these steps with programs that print what happens.
@@ -206,7 +206,7 @@ Answers are at the end of this note.
 **Explain in 15 seconds:** "A stream describes a computation over a sequence as a lazy pipeline that runs when you call a terminal operation."
 
 **Explain in 60 seconds:**
-> "A stream is a pipeline over a source: intermediate operations like filter and map describe the work, and nothing happens until a terminal operation such as toList or sum starts it. Elements flow through the steps one at a time, the stream stores nothing and can be used once. That makes pipelines readable for filter-transform-gather work, but they need stateless lambdas, side effects and parallelism need care, and a simple loop is sometimes clearer."
+> "A stream is a pipeline over a source: intermediate operations like filter and map describe the work, and nothing happens until a terminal operation such as toList or sum starts it. In a sequential stream, elements flow through the steps one at a time; the stream stores nothing and can be used once. That makes pipelines readable for filter-transform-gather work, but they need stateless lambdas, side effects and parallelism need care, and a simple loop is sometimes clearer."
 
 **Architect's takeaway:** use streams to state intent when the steps are small and pure, and judge each use by its guarantees, not by how modern it looks.
 
