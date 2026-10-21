@@ -55,7 +55,7 @@ Only the Streams series is written so far; the rest are listed as plain text and
 
 The Java notes are hands-on: every important concept comes with a complete program you can run, its exact output, and a change to try. This section is the one place that explains how to run them.
 
-**1. Check the Java version.** The examples use Java 21 (an LTS release). On this Mac, Java is managed with SDKMAN, and Temurin 21 is installed:
+**1. Check the Java version.** The examples need Java 16 or later and are tested with Java 21 (an LTS release); each lesson's version note says which feature arrived in which Java version. On this Mac, Java is managed with SDKMAN, and Temurin 21 is installed:
 
 ```bash
 sdk current java          # shows the active version, for example 21.0.8-tem
@@ -96,9 +96,19 @@ static List<Order> sampleOrders() {
 
 Amounts are in cents in a `long`, the usual way to avoid floating-point rounding with money; the examples format them as euros when printing.
 
+**From 13.2.3 on, each order also carries its lines** (the products bought), so pipelines can flatten orders into lines. The five orders and their totals don't change, and each order's lines add up to its total:
+
+```java
+record OrderLine(String sku, int quantity, long unitCents) {}
+
+record Order(String id, String customer, Status status, long totalCents, List<OrderLine> lines) {}
+```
+
+The full sample data with lines is listed at the start of [13.2.3](02-streams/03-transforming-filtering.md). Earlier examples keep the version without lines; both run on their own.
+
 ## 6. Architectural decisions
 
-- **Which Java version?** Notes here use Java 21 (an LTS release) unless they say otherwise, and name the version for anything newer or older.
+- **Which Java version?** Each lesson has a short version note: the *baseline* (the version the core idea comes from, for example Java 8 for streams), the *newer features* and the version that *introduced* each, what the examples *need*, and the JDK they were *tested with* (Java 21.0.8). The idea and the API can come from different versions, which matters when a production service still runs Java 8, 11 or 17.
 - **Language feature or library?** Prefer the standard library feature when it states the intent more clearly than a loop, and keep the loop when it doesn't.
 
 ## 7. Notes in this area, in learning order

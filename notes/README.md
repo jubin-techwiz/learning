@@ -71,8 +71,9 @@ Added on request. The Streams series has started; the other Java topics are plan
 | 13.1 | [Java language and platform: the big picture](13-java/01-java-overview.md) | Done |
 | 13.2.1 | [Java Stream API: the big picture](13-java/02-streams/01-streams-overview.md) (series index) | Done |
 | 13.2.2 | [The pipeline: source, operations and laziness](13-java/02-streams/02-pipeline-laziness.md) | Done |
+| 13.2.3 | [Transforming and filtering: map, filter, flatMap, sorted, limit](13-java/02-streams/03-transforming-filtering.md) | Done |
 
-**Planned in this series:** 13.2.3 to 13.2.10 (transforming and filtering, terminal operations, collectors, primitive streams, lambdas in pipelines, parallel streams, streams versus loops, Stream Gatherers). The full list is in the [roadmap](roadmap.md).
+**Planned in this series:** 13.2.4 to 13.2.10 (terminal operations, collectors, primitive streams, lambdas in pipelines, parallel streams, streams versus loops, Stream Gatherers). The full list is in the [roadmap](roadmap.md).
 
 ### Coming next
 
@@ -128,7 +129,7 @@ Only the concept, the terms, the ShopFlow example, how it works, the questions, 
 
 **Notes with a "Try it yourself" experiment:** [2.2.2](02-messaging/02-kafka/02-log-topics-partitions-offsets.md), [2.2.4](02-messaging/02-kafka/04-consumers-consumer-groups.md), [2.2.5](02-messaging/02-kafka/05-offset-commits-delivery-guarantees.md), [2.2.7](02-messaging/02-kafka/07-rebalancing-static-membership.md) and [2.2.13](02-messaging/02-kafka/13-retention-compaction-tiered-storage.md). They need only a local Kafka broker and its command-line tools, and were run on Apache Kafka 4.3.2 on 2026-10-21.
 
-**Hands-on Java notes:** [13.2.1](13-java/02-streams/01-streams-overview.md) and [13.2.2](13-java/02-streams/02-pipeline-laziness.md) are built around complete Java 21 programs with their exact output, experiments and practice exercises with solutions. How to run them on a Mac (terminal or VS Code) is in [the Java overview](13-java/01-java-overview.md), section 5.
+**Hands-on Java notes:** [13.2.1](13-java/02-streams/01-streams-overview.md), [13.2.2](13-java/02-streams/02-pipeline-laziness.md) and [13.2.3](13-java/02-streams/03-transforming-filtering.md) are built around complete Java 21 programs with their exact output, experiments and practice exercises with solutions. How to run them on a Mac (terminal or VS Code) is in [the Java overview](13-java/01-java-overview.md), section 5.
 
 ## The running example: ShopFlow
 

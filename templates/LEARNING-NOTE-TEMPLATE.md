@@ -13,6 +13,18 @@ updated: "<YYYY-MM-DD>"
 **<Area> · <Series, if any> · Step <N.N.N> · <Level>** · Last updated <YYYY-MM-DD>
 **Prerequisites:** [<earlier note>](<relative link>), [<earlier note>](<relative link>)
 
+<!-- Optional: only when versions materially affect the lesson (LEARNING-STANDARD.md, section 12, "Version awareness"). Keep only the rows that apply. -->
+
+**Version note**
+
+| Item | Version |
+|---|---|
+| Baseline | <version the core idea comes from, for example Java 8> |
+| Newer features covered | <feature: version that introduced it> |
+| Examples need | <minimum required version> |
+| Hands-on tested with | <exact version actually used> |
+| Compatibility note | <older-version alternative, deprecation or changed default> |
+
 ## 1. What it is and why it matters
 
 **What is it?** <One or two plain sentences.>
@@ -91,7 +103,7 @@ updated: "<YYYY-MM-DD>"
 <What it is and why it is useful, in two or three sentences.>
 
 ```java
-// File: <Name>.java (runnable, Java 21)
+// File: <Name>.java (runnable, Java <minimum required version>)
 <complete program: imports, shared sample data, public class <Name> with main>
 ```
 

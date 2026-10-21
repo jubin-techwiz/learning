@@ -31,13 +31,13 @@ You can have several areas open at once. When you switch, the area you leave is 
 |---|---|---|---|---|
 | 1 Resilience | Done | 1.1 to 1.10 | none | All ten notes follow the current note format (migrated and reviewed 2026-10-21). Revise from the cheat sheet. Hands-on demo only if you ask |
 | 2 Messaging, Kafka | Done | 2.1, 2.2.1 to 2.2.18 (Kafka series complete) | Next in this area: RabbitMQ series (2.3) | Resumed on 2026-10-21 after the resilience notes were finished. Kafka error handling and the idempotent producer (2.2.8, 2.2.9) have their resilience prerequisites in place |
-| 13 Java, Streams | Learning | 13.1, 13.2.1, 13.2.2 | 13.2.3 Transforming and filtering | Added on 2026-10-21 at your request. Numbered 13 so existing note paths don't change; the order of learning is set by "Do next", not by the number |
+| 13 Java, Streams | Learning | 13.1, 13.2.1 to 13.2.3 | 13.2.4 Terminal operations and `Optional` | Added on 2026-10-21 at your request. Numbered 13 so existing note paths don't change; the order of learning is set by "Do next", not by the number |
 
 ## Do next
 
 | # | Topic | Step | Why now |
 |---|---|---|---|
-| 1 | Java Stream API series | 13.2.3 onward | You chose it next (2026-10-21); started with the pipeline and laziness |
+| 1 | Java Stream API series | 13.2.4 onward | You chose it next (2026-10-21); 13.2.1 to 13.2.3 are written, hands-on |
 | 2 | RabbitMQ series | 2.3.1 to 2.3.14 | The queue family, to compare with Kafka |
 | 3 | Choosing a messaging system | 2.4 | Completes the messaging area with a decision guide |
 | 4 | Design patterns | 3.x | Next track in your order |
@@ -261,7 +261,7 @@ Why: every ShopFlow service is written in Java, and architecture decisions about
 |---|---|---|---|---|
 | 13.2.1 | [Java Stream API: the big picture](13-java/02-streams/01-streams-overview.md) | Fundamentals | Both | Done |
 | 13.2.2 | [The pipeline: source, operations and laziness](13-java/02-streams/02-pipeline-laziness.md) | Fundamentals | Engineer | Done |
-| 13.2.3 | Transforming and filtering: `map`, `filter`, `flatMap`, `sorted`, `limit` | Fundamentals | Engineer | Planned |
+| 13.2.3 | [Transforming and filtering: `map`, `filter`, `flatMap`, `sorted`, `limit`](13-java/02-streams/03-transforming-filtering.md) | Fundamentals | Engineer | Done |
 | 13.2.4 | Terminal operations and `Optional` | Fundamentals | Engineer | Planned |
 | 13.2.5 | Collectors: `groupingBy`, `toMap`, `partitioningBy`, `teeing` | Intermediate | Engineer | Planned |
 | 13.2.6 | Primitive streams and boxing | Intermediate | Engineer | Planned |
@@ -269,6 +269,14 @@ Why: every ShopFlow service is written in Java, and architecture decisions about
 | 13.2.8 | Parallel streams: when they help and when they hurt | Advanced | Architect | Planned |
 | 13.2.9 | Streams versus loops in production code | Advanced | Both | Planned |
 | 13.2.10 | Custom stages: Stream Gatherers | Advanced | Both | Planned |
+
+**Planned moves** (made when the destination lesson is written; 13.2.2 then keeps a short summary and a link):
+
+| Destination | Material to move from 13.2.2 |
+|---|---|
+| 13.2.4 Terminal operations | `Stream.toList()` versus `Collectors.toList()` and list mutability |
+| 13.2.7 Lambdas in pipelines | Side effects, `peek()`, shared mutable state and interference |
+| 13.2.8 Parallel streams | The detailed parallel execution trace and performance considerations |
 
 Other Java topics (records and pattern matching, concurrency and virtual threads, memory and the JVM) are proposals, to be listed when they start.
 

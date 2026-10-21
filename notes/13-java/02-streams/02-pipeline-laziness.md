@@ -11,7 +11,17 @@ updated: "2026-10-21"
 **Java · Streams · Step 13.2.2 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Java Stream API: the big picture](01-streams-overview.md) (13.2.1)
 
-Every example below is a complete Java 21 program using the shared ShopFlow orders. Run it, compare with the **Expected output**, then try the experiment. How to run them on your Mac (terminal or VS Code) is in [the Java overview](../01-java-overview.md), section 5.
+**Version note**
+
+| Item | Version |
+|---|---|
+| Baseline | **Java 8**: pipelines, laziness, short-circuiting (`findFirst`, `anyMatch`, `limit`), `peek`, `forEachOrdered`, parallel streams |
+| Newer features used | **Java 16**: `Stream.toList()`; the examples also use records (Java 16) and `List.of` (Java 9) |
+| Examples need | **Java 16 or later** |
+| Hands-on tested with | OpenJDK 21.0.8 (Temurin) |
+| Compatibility note | Before Java 16 there is no `Stream.toList()`: use `collect(Collectors.toList())` (type and mutability unspecified) or, from Java 10, `collect(Collectors.toUnmodifiableList())`, which also rejects `null` elements |
+
+Every example below is a complete program using the shared ShopFlow orders. Run it, compare with the **Expected output**, then try the experiment. How to run them on your Mac (terminal or VS Code) is in [the Java overview](../01-java-overview.md), section 5.
 
 ## 1. What it is and why it matters
 
@@ -68,7 +78,7 @@ The printing inside the lambdas below is there only to make the order visible; s
 **Concept.** Intermediate operations are recipes. The run starts at the terminal operation, and then, in this sequential stream, each order goes through `filter` and, if it passes, `map`, before the next order starts.
 
 ```java
-// File: LazinessDemo.java (runnable, Java 21)
+// File: LazinessDemo.java (runnable, Java 16)
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -143,7 +153,7 @@ It is *not* "filter all five, then map the three survivors": `map o-1001` comes 
 **Concept.** Some terminal operations can answer before reading everything. `findFirst` stops at the first match, `anyMatch` stops at the first `true`, and `limit` stops an otherwise endless source.
 
 ```java
-// File: ShortCircuitDemo.java (runnable, Java 21)
+// File: ShortCircuitDemo.java (runnable, Java 16)
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -219,7 +229,7 @@ Without `limit`, the last pipeline would never finish.
 **Concept.** `sorted` can't release the smallest order until it has seen them all. So everything before it runs first, and everything after it runs afterwards.
 
 ```java
-// File: SortedBarrierDemo.java (runnable, Java 21)
+// File: SortedBarrierDemo.java (runnable, Java 16)
 import java.util.Comparator;
 import java.util.List;
 
@@ -272,7 +282,7 @@ paid orders, smallest first: [o-1003, o-1001, o-1005]
 **Concept.** The first terminal operation consumes the stream. To compute two results, keep the *source* (or a recipe that builds a new stream), not the stream.
 
 ```java
-// File: SingleUseDemo.java (runnable, Java 21)
+// File: SingleUseDemo.java (runnable, Java 16)
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -336,7 +346,7 @@ paid revenue: 22500
 The program below prints only what the Java documentation guarantees, so its output is the same on every run:
 
 ```java
-// File: ParallelGuarantees.java (runnable, Java 21)
+// File: ParallelGuarantees.java (runnable, Java 16)
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -422,7 +432,7 @@ parallel forEach visited all five: true
 Now the part that is **not** guaranteed. This trace prints which thread runs `map` for each order:
 
 ```java
-// File: ParallelTrace.java (runnable, Java 21)
+// File: ParallelTrace.java (runnable, Java 16)
 import java.util.List;
 
 public class ParallelTrace {
@@ -506,7 +516,7 @@ These are realistic mistakes, each as a program you can run. Two simpler ones ar
 - **Why?** `peek` runs only for the elements the pipeline actually processes. With `count()` on a list whose size is known, the pipeline may not run at all; with `findFirst`, it stops after the first match.
 
 ```java
-// File: PeekPitfallDemo.java (runnable, Java 21)
+// File: PeekPitfallDemo.java (runnable, Java 16)
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -567,7 +577,7 @@ audit trail: [o-1001, o-1002, o-1003, o-1004, o-1005]
 - **Why?** Several threads call `add` on the same non-thread-safe list at once, and some additions are lost (or the list's internal array is corrupted).
 
 ```java
-// File: SharedListMistakeDemo.java (runnable, Java 21)
+// File: SharedListMistakeDemo.java (runnable, Java 16)
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
@@ -610,7 +620,7 @@ toList() result has 10000 of 10000
 - **Why?** The documentation calls this *interference* and requires lambdas not to modify the source.
 
 ```java
-// File: InterferenceDemo.java (runnable, Java 21)
+// File: InterferenceDemo.java (runnable, Java 16)
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
@@ -650,7 +660,7 @@ copies: [o-1001-copy, o-1002-copy]
 **Concept.** All three below gather elements into a `List` in encounter order, but they promise different things. `toList()` (Java 16+) returns an **unmodifiable** list. `Collectors.toList()` makes **no promise** about the list's type, mutability, serializability or thread safety. When you need a list you will change, ask for one explicitly with `Collectors.toCollection(ArrayList::new)`. The program checks only the guaranteed behaviour, so it never calls `add` on the `Collectors.toList()` result.
 
 ```java
-// File: ToListDemo.java (runnable, Java 21)
+// File: ToListDemo.java (runnable, Java 16)
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -766,7 +776,7 @@ Answers are at the end of this note.
 
 **Architect's takeaway:** treat a pipeline as a description that runs once, and keep every lambda free of shared state, so the result doesn't depend on how the library chooses to run it.
 
-**Next topic:** transforming and filtering with `map`, `filter` and `flatMap` (13.2.3, planned).
+**Next topic:** [Transforming and filtering: map, filter, flatMap, sorted, limit](03-transforming-filtering.md) (13.2.3)
 
 ## 10. Verification and sources
 
@@ -801,7 +811,7 @@ Answers are at the end of this note.
 **Exercise solutions** (run on OpenJDK 21.0.8; your version may differ in style but should print the same):
 
 ```java
-// File: PendingRevenue.java (runnable, Java 21)
+// File: PendingRevenue.java (runnable, Java 16)
 import java.util.List;
 
 public class PendingRevenue {
@@ -836,7 +846,7 @@ pending revenue = EUR 45.00
 ```
 
 ```java
-// File: BigPaidOrders.java (runnable, Java 21)
+// File: BigPaidOrders.java (runnable, Java 16)
 import java.util.Comparator;
 import java.util.List;
 
@@ -876,7 +886,7 @@ big paid orders, largest first: [o-1005, o-1001]
 Exercise 3: `filter` keeps o-1001 (8,000), o-1004 (4,500) and o-1005 (12,000); because this is a sequential stream, each surviving order goes through `peek`, `map` and `forEach` before the next one starts. (With `parallelStream()`, the lines could come in any order.)
 
 ```java
-// File: PredictOrder.java (runnable, Java 21)
+// File: PredictOrder.java (runnable, Java 16)
 import java.util.List;
 
 public class PredictOrder {

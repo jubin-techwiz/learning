@@ -6,7 +6,10 @@ A runnable example is a ```java block whose first line is
     // File: OrderTotals.java (runnable, Java 21)
 
 The block must be a complete program (imports, a public class named like the file, a main
-method). The text between the end of the block and the next fenced block must contain either
+method). The number after "Java" is the example's MINIMUM REQUIRED version: the program is
+compiled at that level with `java --source N`, which rejects both newer language features (for
+example records below 16) and newer APIs (for example Stream.toList() below 16), and is then run
+on the installed JDK, whose version is reported as "tested with". The text between the end of the block and the next fenced block must contain either
 
     **Expected output**   -> the next ```text block must match the program's output exactly
                              (trailing spaces ignored), or
@@ -107,7 +110,8 @@ for f in files:
             src = os.path.join(tmp, name + '.java')
             open(src, 'w', encoding='utf-8').write('\n'.join(body) + '\n')
             try:
-                run = subprocess.run(['java', name + '.java'], cwd=tmp, capture_output=True, text=True, timeout=120)
+                run = subprocess.run(['java', '--source', str(needed), name + '.java'],
+                                     cwd=tmp, capture_output=True, text=True, timeout=120)
             except subprocess.TimeoutExpired:
                 failed += 1
                 print(f'FAIL  {where} {name}.java did not finish within 120 seconds')
@@ -120,13 +124,13 @@ for f in files:
         if expect_varies:
             varies += 1
             passed += 1
-            print(f'ok    {where} {name}.java ran (output varies, not compared)')
+            print(f'ok    {where} {name}.java (compiled at Java {needed}; ran, output varies, not compared)')
             continue
         got = [l.rstrip() for l in output.split('\n')]
         want = [l.rstrip() for l in nxt[2]]
         if got == want:
             passed += 1
-            print(f'ok    {where} {name}.java')
+            print(f'ok    {where} {name}.java (compiled at Java {needed})')
         else:
             failed += 1
             print(f'FAIL  {where} {name}.java output differs from the expected output')
@@ -136,6 +140,6 @@ for f in files:
                 if g != w:
                     print(f'      line {i + 1}: expected {w!r}, got {g!r}')
 
-print(f'java examples: {passed + failed} run with {version_line}, {passed} passed '
+print(f'java examples: {passed + failed} run, each compiled at its declared minimum Java version and tested with {version_line}; {passed} passed '
       f'({varies} with varying output, not compared), {failed} failed')
 sys.exit(1 if failed else 0)

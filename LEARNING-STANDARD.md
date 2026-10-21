@@ -155,7 +155,7 @@ For each **important** concept (not every small subtopic), teach with a worked e
 9. **When to use it**: benefits, limits and alternatives (often in "Architectural decisions").
 
 **Conventions for Java examples** (so they can be verified):
-- The first line of a runnable block is `// File: Name.java (runnable, Java 21)`; the program's public class is `Name`, and it runs on its own with the single-file launcher (`java Name.java`).
+- The first line of a runnable block is `// File: Name.java (runnable, Java N)`, where `N` is the *minimum required* Java version (section 12, "Version awareness"); the program's public class is `Name`, and it runs on its own with the single-file launcher (`java Name.java`).
 - Immediately after it, a line containing **Expected output** and a `text` block with the exact output; or, when the output genuinely varies between runs (threads, time), **Example output** and a note saying what varies.
 - **Assert only what is guaranteed.** An **Expected output** block may contain only behaviour the specification guarantees for the stated version. Implementation details (for example which `List` class a JDK happens to return) and timing-dependent behaviour (thread names, parallel processing order) go in an **Example output** block or in prose explicitly labelled as an observation, never in an exact assertion; write the program so its checked lines test the guarantee (for example "contains all five ids" rather than their order from `forEach`).
 - Use one consistent domain model per area. For Java topics this is ShopFlow's `Order` record and the same sample orders in every example; each file repeats that small setup so it stays runnable on its own, and the note says it is the shared setup.
@@ -204,6 +204,30 @@ For substantial concepts, give the decision criteria: **when to use, when not to
 5. **Correct absolutes.** Typical traps: "at-least-once means the operation always succeeds", "exactly-once covers my database and HTTP calls", "the database update and the email are atomic", "retries keep business order", "this default holds in every version".
 6. **Verification section format:** checked date and method; *Confirmed* (with source and version); *Assumptions and illustrations*; *To verify*; *Decision rule*.
 
+### Version awareness
+
+When a feature, API, syntax, configuration option, command or behaviour depends on the version, say which version, so the learner understands where each piece comes from and what works on the version they maintain. The purpose is understanding, not testing across versions: validate examples once, on the version you actually have, and say which one.
+
+**Keep four things apart** (they are often different numbers):
+
+| Label | Meaning | Example |
+|---|---|---|
+| **Introduced in** | The version where the feature first became available (final, not preview) | `Stream.toList()`: Java 16 |
+| **Minimum required** | The version needed to compile or run *this example* (the highest "introduced in" among what it uses) | An example with records and `toList()`: Java 16 |
+| **Tested with** | The version actually used to run it | OpenJDK 21.0.8 |
+| **Behaviour or compatibility notes** | Differences that matter across versions: deprecations, removals, changed defaults, older alternatives | Before Java 16, use `collect(Collectors.toList())` |
+
+**Rules:**
+- State "introduced in" only when it is reliably known, from official documentation, release notes or the change proposal (Javadoc "Since", a JEP, a KIP, a framework's release notes). Previews don't count as "introduced" for production use; say when a feature became final.
+- Name the **layer** a version belongs to: language feature (records), library API (`Stream.toList()`), framework (Spring Boot property names), runtime behaviour (a JVM default), or tool requirement (a Maven or SDK version). They change independently.
+- Point out what could cause compile errors, run-time failures, configuration problems or surprising behaviour across versions, and give the replacement for anything deprecated or removed.
+- Give an older-version alternative when a learner may realistically meet older production code; don't list every historical version.
+- Other technologies follow their own versioning and compatibility rules (for example a Spring Boot generation and the Java versions it supports, Kafka broker and client versions, Kubernetes API versions that are removed, Dart SDK constraints); apply the same four labels to them.
+
+**Version note.** When versions materially affect a lesson, put a small table after the position line, with only the rows that apply: *Baseline* (where the core idea comes from), *Newer features covered* (each with the version that introduced it), *Examples need* (minimum required), *Hands-on tested with*, and a *Compatibility note*. Mention a version again in the text only at the first use of a newer feature (for example "`Stream.toList()` (Java 16+)"). Lessons with no meaningful version differences get no version note.
+
+**Runnable examples:** the number in the marker line `// File: Name.java (runnable, Java N)` is the *minimum required* version. The example checker compiles the program at that level (`java --source N`), so an example labelled Java 16 can't silently use a Java 21 API, and runs it once on the installed JDK, which it reports as *tested with*. Nothing is run on several JDKs.
+
 ## 13. Exercises, answers and revision
 
 - **Check your understanding:** three to five questions, mixing conceptual, "what happens if...?", troubleshooting and design-decision questions. They test understanding, not recall of definitions.
@@ -236,6 +260,8 @@ When a note is added or changed, update together:
 
 If a file moves, update every internal link and run `./tools/check-notes.sh` (see `tools/README.md`).
 
+**Validate on creation, restructure when the path exists.** Validate a note's examples and facts when you create it. Don't restructure earlier notes each time a new one is added: when material in an earlier note really belongs to a lesson that isn't written yet, record it as a planned move next to that lesson in the roadmap, and move it (leaving a short summary and a link behind) when the destination lesson is written. This keeps the repository useful for learning instead of turning each new topic into a restructuring exercise.
+
 ## 16. Quality checklist
 
 Before a note is considered done:
@@ -248,6 +274,7 @@ Before a note is considered done:
 - [ ] Failure scenarios use the five-part format; layers of guarantees are not mixed up.
 - [ ] Decisions are compared against a specific requirement; no "always better" claims.
 - [ ] No unverified fact in the teaching sections; versions recorded for defaults; no invented numbers.
+- [ ] Where versions matter: a version note with baseline, newer features and the version that introduced each, minimum required and tested with; "introduced in" claims come from official sources.
 - [ ] Code is small, explained and labelled with its status.
 - [ ] The format fits the topic type (section 3), and the definition of done is met: the learner can explain it, recognise when it applies and, where practical, practise it.
 - [ ] Programming topics: each important concept has a worked example; runnable code is complete, the expected output is exact, the walkthrough traces the data, the experiment's result is in Answers, and `tools/check-java-examples.py` passes. No illustrative notation is presented as code.

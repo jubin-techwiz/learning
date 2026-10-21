@@ -11,7 +11,17 @@ updated: "2026-10-21"
 **Java · Streams · Step 13.2.1 · Series overview** · Last updated 2026-10-21
 **Prerequisites:** [Java language and platform: the big picture](../01-java-overview.md) (13.1)
 
-Read this first. It is the map of the Streams series: what a stream is, why it exists, when to prefer a plain loop, and the order to learn the topics in. The examples are complete Java 21 programs; how to run them on your Mac is in [the Java overview](../01-java-overview.md), section 5.
+Read this first. It is the map of the Streams series: what a stream is, why it exists, when to prefer a plain loop, and the order to learn the topics in. The examples are complete programs; how to run them on your Mac is in [the Java overview](../01-java-overview.md), section 5.
+
+**Version note** (for the whole series)
+
+| Item | Version |
+|---|---|
+| Baseline | **Java 8**: the Stream API (`java.util.stream`), lambda expressions, method references and `Optional` |
+| Newer features covered | **Java 9**: `takeWhile`, `dropWhile`, `Stream.ofNullable`, `iterate` with a condition. **Java 10**: `Collectors.toUnmodifiableList()`. **Java 16**: `Stream.toList()`, `mapMulti`. **Java 24**: Stream Gatherers (13.2.10, planned) |
+| Examples need | **Java 16 or later**: they use records (a Java 16 language feature) and `Stream.toList()`; the example checker compiles each one at the Java 16 level |
+| Hands-on tested with | OpenJDK 21.0.8 (Temurin) |
+| On Java 8 to 15 | Replace each record with a small final class, `toList()` with `collect(Collectors.toList())` (no mutability guarantee) or, from Java 10, `collect(Collectors.toUnmodifiableList())`, and `List.of(...)` (Java 9) with `Arrays.asList(...)`, which returns a fixed-size list |
 
 ## 1. What it is and why it matters
 
@@ -57,7 +67,7 @@ Read this first. It is the map of the Streams series: what a stream is, why it e
 The program below answers the request twice, once with a loop and once with a stream, using the shared ShopFlow sample orders (described in [the Java overview](../01-java-overview.md), section 5).
 
 ```java
-// File: PaidTotal.java (runnable, Java 21)
+// File: PaidTotal.java (runnable, Java 16)
 import java.util.List;
 
 public class PaidTotal {
@@ -157,7 +167,7 @@ The next note, [13.2.2](02-pipeline-laziness.md), proves each of these steps wit
 | Each step is a small, pure function | The logic has complex early exits, or checked exceptions in every step |
 | You may later gather results with a collector | A plain loop is shorter and equally clear |
 
-**Versions.** These notes use Java 21. `Stream.toList()` needs Java 16, `takeWhile` and `dropWhile` need Java 9, and custom intermediate operations (Stream Gatherers) became final in Java 24. **Common mistakes:** forgetting the terminal operation; reusing a stream; putting side effects in `map`; using parallel streams by reflex. Each is demonstrated in [13.2.2](02-pipeline-laziness.md).
+**Versions.** The concepts in this series are Java 8; the version note at the top lists the newer APIs and what to use on older versions. A production service on Java 8 or 11 can use every idea here, but not every method. **Common mistakes:** forgetting the terminal operation; reusing a stream; putting side effects in `map`; using parallel streams by reflex. Each is demonstrated in [13.2.2](02-pipeline-laziness.md).
 
 ## 7. Notes in this series, in learning order
 
@@ -167,7 +177,7 @@ The next note, [13.2.2](02-pipeline-laziness.md), proves each of these steps wit
 |---|---|---|---|
 | 13.2.1 | This overview | 13.1 | Done |
 | 13.2.2 | [The pipeline: source, operations and laziness](02-pipeline-laziness.md) | 13.2.1 | Done |
-| 13.2.3 | Transforming and filtering: `map`, `filter`, `flatMap`, `sorted`, `limit` | 13.2.2 | Planned |
+| 13.2.3 | [Transforming and filtering: `map`, `filter`, `flatMap`, `sorted`, `limit`](03-transforming-filtering.md) | 13.2.2 | Done |
 | 13.2.4 | Terminal operations and `Optional` | 13.2.2 | Planned |
 
 ### Intermediate
