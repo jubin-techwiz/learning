@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Resilience · Step 1.3 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Timeouts](02-timeouts.md) (1.2); read next: [Idempotency](04-idempotency.md) (1.4)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A retry tries a failed call again. Done safely, it waits longer each time (**backoff**), adds randomness (**jitter**), and only repeats calls that are safe to repeat.
 

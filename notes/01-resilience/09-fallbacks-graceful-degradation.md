@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Resilience · Step 1.9 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Circuit breaker](05-circuit-breaker.md) (1.5), [Bulkhead](06-bulkhead.md) (1.6), [Load shedding](08-load-shedding-backpressure.md) (1.8)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A **fallback** is the answer you give when the real one isn't available. **Graceful degradation** means the system keeps its core job and drops optional features when something breaks.
 

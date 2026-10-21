@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Resilience · Step 1.10 · Intermediate** · Last updated 2026-10-21
 **Prerequisites:** the earlier resilience notes, especially [Timeouts](02-timeouts.md) (1.2), [Circuit breaker](05-circuit-breaker.md) (1.5) and [Fallbacks](09-fallbacks-graceful-degradation.md) (1.9)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Resilience testing deliberately creates failures (slow calls, errors, lost servers) to check that timeouts, retries, breakers and fallbacks really work. **Chaos engineering** is the careful, experiment-based form of it.
 

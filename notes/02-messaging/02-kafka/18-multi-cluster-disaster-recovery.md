@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.18 · Advanced** · Last updated 2026-10-21
 **Prerequisites:** [Replication](06-brokers-replication-leader-election.md) (2.2.6), [Kafka Connect](15-kafka-connect-cdc.md) (2.2.15)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Protecting against the loss of a whole region by running a second Kafka cluster elsewhere, keeping it in sync (for example with **MirrorMaker 2**), and having a tested plan to move producers and consumers over.
 

@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Resilience · Step 1.5 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Timeouts](02-timeouts.md) (1.2), [Retries, backoff and jitter](03-retries-backoff-jitter.md) (1.3)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A circuit breaker watches recent calls to a dependency. When too many fail or run slow, it **opens**: calls are refused at once, without touching the dependency, and a fallback answers instead. After a while it lets a few test calls through and closes again if they succeed.
 

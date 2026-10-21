@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.17 · Advanced** · Last updated 2026-10-21
 **Prerequisites:** [Replication](06-brokers-replication-leader-election.md) (2.2.6), [Partition planning](11-ordering-partition-planning-hot-partitions.md) (2.2.11)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Watching a few Kafka health signals and each consumer group's **lag**, and sizing the cluster for peaks before they happen.
 

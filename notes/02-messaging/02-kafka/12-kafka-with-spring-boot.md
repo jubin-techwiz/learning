@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.12 · Intermediate** · Last updated 2026-10-21
 **Prerequisites:** [Producers](03-producers-keys-acks-batching.md), [Consumers](04-consumers-consumer-groups.md), [Offset commits](05-offset-commits-delivery-guarantees.md), [Error handling](08-error-handling-retries-dlt.md) (2.2.3 to 2.2.8)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Spring Boot configures Kafka from `spring.kafka.*` properties, gives you `KafkaTemplate` to send and `@KafkaListener` to receive, and lets you set commit behaviour, error handling, tracing and tests as configuration.
 

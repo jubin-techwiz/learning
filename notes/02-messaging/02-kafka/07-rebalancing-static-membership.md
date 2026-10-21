@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.7 · Intermediate** · Last updated 2026-10-21
 **Prerequisites:** [Consumers and consumer groups](04-consumers-consumer-groups.md) (2.2.4), [Offset commits](05-offset-commits-delivery-guarantees.md) (2.2.5)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A **rebalance** is a consumer group reassigning partitions when members join, leave or are judged dead. **Cooperative rebalancing** and **static membership** make rebalances rarer and shorter.
 

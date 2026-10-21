@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.14 · Advanced** · Last updated 2026-10-21
 **Prerequisites:** [Exactly-once](09-idempotent-producer-transactions.md) (2.2.9), [Log compaction](13-retention-compaction-tiered-storage.md) (2.2.13)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Kafka Streams is a Java library you embed in a service to continuously transform, aggregate and join Kafka topics, with its working state stored locally and backed up to Kafka.
 

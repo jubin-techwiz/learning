@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.4 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [The log, topics, partitions and offsets](02-log-topics-partitions-offsets.md) (2.2.2)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A **consumer** reads events from a topic in a loop. Consumers that share a `group.id` form a **consumer group**, which splits the topic's partitions between its members: at any moment each partition is read by exactly one member of the group (a rebalance or a member that has lost its session can briefly blur this, which is one reason duplicates happen).
 

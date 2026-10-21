@@ -13,7 +13,7 @@ updated: "2026-10-21"
 
 Read this first. It is the map of the messaging area: the problem messaging solves, the two families of brokers, the questions every design must answer, and the learning order.
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Messaging lets services talk by leaving messages with a middleman, a **message broker**, instead of calling each other directly.
 

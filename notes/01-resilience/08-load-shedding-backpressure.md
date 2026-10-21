@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Resilience · Step 1.8 · Intermediate** · Last updated 2026-10-21
 **Prerequisites:** [Bulkhead](06-bulkhead.md) (1.6), [Rate limiting](07-rate-limiting.md) (1.7), [Retries](03-retries-backoff-jitter.md) (1.3)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** **Load shedding** means rejecting some requests early when you are overloaded, so the ones you accept are served well. **Backpressure** means telling senders to slow down, instead of letting work pile up in a queue.
 

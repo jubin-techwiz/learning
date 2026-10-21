@@ -13,7 +13,7 @@ updated: "<YYYY-MM-DD>"
 **<Area> · <Series, if any> · Step <N.N.N> · <Level>** · Last updated <YYYY-MM-DD>
 **Prerequisites:** [<earlier note>](<relative link>), [<earlier note>](<relative link>)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** <One or two plain sentences.>
 
@@ -84,6 +84,31 @@ updated: "<YYYY-MM-DD>"
 | Application | <...> |
 | External systems | <...> |
 
+<!-- Programming topics: for each important concept, a worked example in this order (drop parts that add nothing): concept, simple example, complete runnable code, exact expected output, walkthrough, experiment, real-world use, common mistake with fix, when to use it. The block below is the shape for Java; see LEARNING-STANDARD.md, section 8. -->
+
+### <Concept name>
+
+<What it is and why it is useful, in two or three sentences.>
+
+```java
+// File: <Name>.java (runnable, Java 21)
+<complete program: imports, shared sample data, public class <Name> with main>
+```
+
+**Expected output** (run on <JDK version>, <date>):
+
+```text
+<exact output>
+```
+
+**Walkthrough:**
+
+| Input element | Step 1 | Step 2 | Result |
+|---|---|---|---|
+| <element> | <what happens> | <what happens> | <contribution to the result> |
+
+**Experiment:** <one change to make>. Predict the output, run it, and compare with the answer at the end.
+
 > [!NOTE]
 > <Untested sketch | Run on <versions> with result <...>>. <Version caveats.>
 
@@ -118,7 +143,11 @@ updated: "<YYYY-MM-DD>"
 
 ## 8. Try it yourself
 
-<!-- Optional. Delete if running something teaches nothing beyond the text. -->
+<!-- Optional for conceptual topics; expected for programming topics (LEARNING-STANDARD.md, sections 3, 8 and 13). Delete if running something teaches nothing beyond the text. -->
+
+<!-- Programming topics: two to four practice exercises, phrased so the learner attempts them first; runnable solutions go in Answers. -->
+
+**Exercise 1:** <a small task on the shared sample data, with the expected result stated in words>
 
 > [!NOTE]
 > Status: <not run in this repository | run on <versions> on <date>>.
@@ -176,6 +205,8 @@ Answers are at the end of this note.
 **Sources:** <official documentation, specifications, books>
 
 ## Answers
+
+<!-- Programming topics: also the experiment results and the practice-exercise solutions, as runnable examples with their expected output. -->
 
 1. <answer with the reasoning>
 2. <answer with the reasoning>

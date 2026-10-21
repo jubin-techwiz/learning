@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.2 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Apache Kafka: the big picture](01-kafka-overview.md) (2.2.1)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Kafka stores events in **logs**: files you only add to at the end. A **topic** is split into **partitions**, each its own log, and every event in a partition gets a number called its **offset**.
 

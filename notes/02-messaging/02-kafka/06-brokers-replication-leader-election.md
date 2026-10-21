@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.6 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Producers](03-producers-keys-acks-batching.md) (2.2.3)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Every partition is copied to several **brokers** (Kafka servers). One copy, the **leader**, serves reads and writes; the others, **followers**, copy it. If the leader's broker fails, an up-to-date follower takes over.
 

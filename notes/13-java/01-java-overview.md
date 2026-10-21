@@ -13,7 +13,7 @@ updated: "2026-10-21"
 
 Read this first. It is the map of the Java area: why it is on the roadmap, how it is organised, and what is written so far.
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** The Java area covers the language and platform features an engineer uses every day and an architect must judge: how the code is expressed (for example streams), and how it runs (threads, memory, the JVM).
 
@@ -51,26 +51,71 @@ A reviewer sees a loop that builds a report from orders and a colleague proposes
 
 Only the Streams series is written so far; the rest are listed as plain text and can be reordered or changed when they start.
 
-## 5. Architectural decisions
+## 5. Running the examples on your Mac
+
+The Java notes are hands-on: every important concept comes with a complete program you can run, its exact output, and a change to try. This section is the one place that explains how to run them.
+
+**1. Check the Java version.** The examples use Java 21 (an LTS release). On this Mac, Java is managed with SDKMAN, and Temurin 21 is installed:
+
+```bash
+sdk current java          # shows the active version, for example 21.0.8-tem
+sdk use java 21.0.8-tem   # switch this terminal to it, if another version is active
+java -version             # must say version "21..."
+```
+
+If `sdk` isn't found in a new terminal, open a new one or run `source ~/.sdkman/bin/sdkman-init.sh`.
+
+**2. Run an example from the terminal.** Copy the code block into a file with the name given on its first line (for example `PaidTotal.java`), then run:
+
+```bash
+java PaidTotal.java
+```
+
+This is Java's single-file source launcher (JDK 11 and later): it compiles the file in memory and runs the first class in it, so there is no separate `javac` step and no project to set up. Compare what you see with the note's **Expected output**.
+
+**3. Run it from VS Code.** With the Extension Pack for Java installed, open the folder that contains the file, open the file, and click **Run** above the `main` method (or press F5). If VS Code picks the wrong JDK, run the command **Java: Configure Java Runtime** and choose Java 21. A single file without a Maven or Gradle project is supported (the Java extension treats the folder as unmanaged sources). These VS Code steps were not tested by the author; the terminal steps were.
+
+**4. When it doesn't run.** "Unsupported class file" or syntax errors for records or `toList()` usually mean an older Java is active: check `java -version`. A class name that differs from the file name is confusing; keep them the same, as the examples do.
+
+**The shared setup.** Every example uses the same ShopFlow data, repeated at the top of each program so that each file runs on its own. This is a fragment, not a program by itself:
+
+```java
+enum Status { PAID, PENDING, CANCELLED }
+
+record Order(String id, String customer, Status status, long totalCents) {}
+
+static List<Order> sampleOrders() {
+    return List.of(
+        new Order("o-1001", "ana", Status.PAID,      8_000),
+        new Order("o-1002", "ben", Status.CANCELLED, 3_000),
+        new Order("o-1003", "ana", Status.PAID,      2_500),
+        new Order("o-1004", "cy",  Status.PENDING,   4_500),
+        new Order("o-1005", "cy",  Status.PAID,     12_000));
+}
+```
+
+Amounts are in cents in a `long`, the usual way to avoid floating-point rounding with money; the examples format them as euros when printing.
+
+## 6. Architectural decisions
 
 - **Which Java version?** Notes here use Java 21 (an LTS release) unless they say otherwise, and name the version for anything newer or older.
 - **Language feature or library?** Prefer the standard library feature when it states the intent more clearly than a loop, and keep the loop when it doesn't.
 
-## 6. Notes in this area, in learning order
+## 7. Notes in this area, in learning order
 
 | Step | Topic | Prerequisites | Status |
 |---|---|---|---|
 | 13.1 | This overview | none | Done |
 | 13.2 | [Java Stream API (series)](02-streams/01-streams-overview.md) | 13.1 | Learning |
 
-## 7. Check your understanding
+## 8. Check your understanding
 
 1. Why does the Java version matter when you read a note about a language feature?
 2. Name one question about code where knowing the JVM's behaviour, not just the syntax, changes the answer.
 
 Answers are at the end of this note.
 
-## 8. Revision
+## 9. Revision
 
 **Remember**
 - **The version decides what exists**; notes say which version they use.
@@ -85,17 +130,18 @@ Answers are at the end of this note.
 
 **Next topic:** [Java Stream API: the big picture](02-streams/01-streams-overview.md) (13.2.1)
 
-## 9. Verification and sources
+## 10. Verification and sources
 
 > [!NOTE]
 > Written 2026-10-21. Re-verify version statements when you revisit this note.
 
-- **Confirmed:** the examples in this area were run on OpenJDK 21.0.8 (an LTS release).
+- **Confirmed:** the examples in this area are run on OpenJDK 21.0.8 (Temurin, an LTS release) and checked automatically: each runnable block is run and its output compared with the note. JEP 330 (JDK 11) added the single-file source launcher: the file is compiled in memory and the first top-level class in it, which must have a standard `main` method, is run.
+- **Observed (2026-10-21):** `sdk current java` reported `21.0.8-tem`; the VS Code extensions `vscjava.vscode-java-pack` and `redhat.java` were installed. The terminal steps were run; the VS Code steps describe the installed extensions and were not exercised by the author.
 - **Assumptions and illustrations:** the ShopFlow scenario; the list of later topics is a proposal.
 - **To verify:** which Java version your projects run in production.
 - **Decision rule:** use the standard feature when it states the intent more clearly, and state the Java version.
 
-**Sources:** the Java SE 21 API documentation (docs.oracle.com); OpenJDK JEPs for newer features.
+**Sources:** the Java SE 21 API documentation (docs.oracle.com); OpenJDK JEP 330, "Launch Single-File Source-Code Programs"; OpenJDK JEPs for newer features; SDKMAN documentation.
 
 ## Answers
 

@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.8 · Intermediate** · Last updated 2026-10-21
 **Prerequisites:** [Offset commits](05-offset-commits-delivery-guarantees.md) (2.2.5), [Retries, backoff and jitter](../../01-resilience/03-retries-backoff-jitter.md) (1.3)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A plan for events a consumer can't process: **retry** those that may succeed later, and move those that never will to a **dead-letter topic (DLT)**, so the rest keep flowing.
 

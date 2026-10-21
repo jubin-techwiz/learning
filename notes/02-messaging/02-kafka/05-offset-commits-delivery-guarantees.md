@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.5 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Consumers and consumer groups](04-consumers-consumer-groups.md) (2.2.4), [Idempotency](../../01-resilience/04-idempotency.md) (1.4)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A consumer saves its progress by **committing an offset**: "next time, start from here". The order of *processing* and *committing* decides what a crash does: skip events, or repeat them.
 

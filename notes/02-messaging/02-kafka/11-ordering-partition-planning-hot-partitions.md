@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.11 · Intermediate** · Last updated 2026-10-21
 **Prerequisites:** [The log](02-log-topics-partitions-offsets.md) (2.2.2), [Consumers](04-consumers-consumer-groups.md) (2.2.4), [Error handling](08-error-handling-retries-dlt.md) (2.2.8)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Three linked decisions: which events must stay in order (the **ordering scope**), which **key** keeps them together, and how many **partitions** the topic needs.
 

@@ -13,7 +13,7 @@ updated: "2026-10-21"
 
 Read this first. It is the map of the Kafka series: the big idea, the core vocabulary and the learning order from fundamentals to advanced.
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Apache Kafka is a distributed, durable **log** of events. Producers add events to the end; consumers read at their own pace, each with its own bookmark; events are kept for a set time whether or not anyone has read them.
 

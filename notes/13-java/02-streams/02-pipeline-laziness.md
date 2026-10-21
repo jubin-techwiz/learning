@@ -11,11 +11,13 @@ updated: "2026-10-21"
 **Java · Streams · Step 13.2.2 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Java Stream API: the big picture](01-streams-overview.md) (13.2.1)
 
-## 1. The concept in simple English
+Every example below is a complete Java 21 program using the shared ShopFlow orders. Run it, compare with the **Expected output**, then try the experiment. How to run them on your Mac (terminal or VS Code) is in [the Java overview](../01-java-overview.md), section 5.
+
+## 1. What it is and why it matters
 
 **What is it?** A stream pipeline has three parts: a **source** that holds the data, **intermediate operations** that describe what to do, and one **terminal operation** that starts the run and produces the result. Nothing happens until the terminal operation is called, and then elements flow through the steps one at a time.
 
-**Why do we need it?** Most surprises with streams come from one of three facts: nothing runs without a terminal operation, elements are processed one by one rather than step by step, and a stream can be used only once. Knowing them lets you predict what a pipeline does.
+**Why do we need it?** Most surprises with streams come from four facts: nothing runs without a terminal operation, elements are processed one by one rather than step by step, some operations stop early, and a stream can be used only once. Knowing them lets you predict what a pipeline does, and spot the bug when it doesn't.
 
 **When would I meet it?** The first time a `peek` prints nothing, a stream throws `IllegalStateException`, or a debugging print shows elements in an unexpected order.
 
@@ -26,26 +28,19 @@ updated: "2026-10-21"
 
 | Term | Simple meaning | Why it matters | Example | Related terms |
 |---|---|---|---|---|
-| **Source** | Where elements come from | Decides ordering and whether the size is known | `List.stream()`, `Stream.of(...)` | Encounter order |
+| **Source** | Where elements come from | Decides ordering and whether the size is known | `orders.stream()`, `Stream.of(...)` | Encounter order |
 | **Intermediate operation** | Returns a new stream; describes work | Lazy: does nothing alone | `filter`, `map`, `sorted` | Stateless, stateful |
 | **Terminal operation** | Produces a result and runs the pipeline | Starts everything; consumes the stream | `toList`, `findFirst`, `count` | Short-circuiting |
-| **Lazy evaluation** | Work is deferred until a result is needed | Explains "nothing printed" | `peek` without a terminal operation | Eager |
-| **Stateless / stateful operation** | Whether a step needs earlier elements | Stateful steps can hold up the flow | `filter` vs `sorted` | Barrier |
-| **Short-circuiting** | A step that can finish without reading everything | Makes infinite streams usable | `limit`, `findFirst` | Infinite stream |
-| **Encounter order** | The order elements are met in the source | Some operations must respect it | List order | Parallel streams |
+| **Lazy evaluation** | Work is deferred until a result is needed | Explains "nothing printed" | A pipeline with no terminal operation | Eager |
+| **Stateless / stateful operation** | Whether a step needs earlier elements | Stateful steps hold up the flow | `filter` versus `sorted` | Barrier |
+| **Short-circuiting** | A step that can finish without reading everything | Saves work; makes infinite streams usable | `findFirst`, `anyMatch`, `limit` | Infinite stream |
+| **Side effect** | Changing something outside the lambda (printing, adding to a list) | Can run fewer times than you think, or race in parallel | `peek(list::add)` | Stateless lambda |
 
 ## 3. In a real system (ShopFlow)
 
-**The business problem.** Finance wants the total of paid orders and the paying customers, and the team wants to know that the pipeline does no wasted work.
+**The business problem.** The Order Service builds reports and checks from order streams: "the paid order ids", "the first big paid order", "is any order cancelled?". The team needs to know when each lambda runs, how many orders are actually read, and what can make a pipeline silently wrong.
 
-```java
-long total = orders.stream()
-    .filter(o -> o.status().equals("PAID"))   // intermediate: describes
-    .mapToLong(Order::cents)                  // intermediate: describes
-    .sum();                                   // terminal: starts the run
-```
-
-Four sample orders (three paid, one cancelled) gave 22,500 on Java 21.0.8, the same as the equivalent loop, with the paying customers `[ana, cy]` from `filter → map → distinct → sorted → toList`. The questions this note answers: when does each lambda run, in what order, and what can go wrong?
+The revenue pipeline from [13.2.1](01-streams-overview.md) (`filter → mapToLong → sum`, 22,500 cents) works. This note shows *why*, and what changes when you add printing, early exits, sorting or a second use.
 
 ## 4. How it works
 
@@ -61,90 +56,528 @@ flowchart LR
 2. The **terminal operation** asks the source for elements.
 3. Each element passes through the stateless steps **one at a time**, all the way to the end, before the next element starts.
 4. A **stateful** step such as `sorted` must see all elements before it can pass any on, so everything before it runs first.
-5. A **short-circuiting** operation (`findFirst`, `limit`) stops pulling as soon as the answer is known.
+5. A **short-circuiting** operation (`findFirst`, `anyMatch`, `limit`) stops pulling as soon as the answer is known.
 6. After the terminal operation the stream is **used up**.
 
-> [!NOTE]
-> Run on OpenJDK 21.0.8 (2026-10-21). The `peek` and `println` calls are only for showing the order; the documentation says `peek` exists mainly to support debugging.
+The printing inside the lambdas below is there only to make the order visible; section 5 explains why you shouldn't rely on it in real code.
 
-| Experiment | What was printed or returned |
-|---|---|
-| `Stream.of(1,2,3).peek(print).map(x -> x*2)` with no terminal operation | Nothing |
-| `Stream.of(1,2,3,4)` with `filter(even)` then `map(x*10)` printing each call, then `toList()` | `filter 1`, `filter 2`, `map 2`, `filter 3`, `filter 4`, `map 4`; result `[20, 40]` |
-| `Stream.of(1..5).peek(pulled).filter(x > 1).findFirst()` | `pulled 1`, `pulled 2`; result `Optional[2]` |
-| `Stream.of(3,1,2).peek(before).sorted().forEach(after)` | `before 3`, `before 1`, `before 2`, then `after 1`, `after 2`, `after 3` |
-| Calling `count()` twice on one stream | `IllegalStateException: stream has already been operated upon or closed` |
+### Laziness and execution order
 
-Read the second row carefully: it is **not** "filter everything, then map everything". Each element goes through the whole pipeline before the next begins. The fourth row shows the exception: `sorted` holds everything back.
+**Concept.** Intermediate operations are recipes. The run starts at the terminal operation, and then each order goes through `filter` and, if it passes, `map`, before the next order starts.
+
+```java
+// File: LazinessDemo.java (runnable, Java 21)
+import java.util.List;
+import java.util.stream.Stream;
+
+public class LazinessDemo {
+
+    enum Status { PAID, PENDING, CANCELLED }
+
+    record Order(String id, String customer, Status status, long totalCents) {}
+
+    static List<Order> sampleOrders() {               // the same five ShopFlow orders in every example
+        return List.of(
+            new Order("o-1001", "ana", Status.PAID,      8_000),
+            new Order("o-1002", "ben", Status.CANCELLED, 3_000),
+            new Order("o-1003", "ana", Status.PAID,      2_500),
+            new Order("o-1004", "cy",  Status.PENDING,   4_500),
+            new Order("o-1005", "cy",  Status.PAID,     12_000));
+    }
+
+    public static void main(String[] args) {
+        List<Order> orders = sampleOrders();
+
+        System.out.println("1. building the pipeline");
+        Stream<String> paidIds = orders.stream()
+                .filter(o -> {
+                    System.out.println("   filter " + o.id() + " (" + o.status() + ")");
+                    return o.status() == Status.PAID;
+                })
+                .map(o -> {
+                    System.out.println("   map    " + o.id());
+                    return o.id();
+                });
+        System.out.println("2. pipeline built, nothing has run yet");
+
+        List<String> result = paidIds.toList();       // terminal operation: the run starts here
+        System.out.println("3. result " + result);
+    }
+}
+```
+
+**Expected output** (run on OpenJDK 21.0.8, 2026-10-21):
+
+```text
+1. building the pipeline
+2. pipeline built, nothing has run yet
+   filter o-1001 (PAID)
+   map    o-1001
+   filter o-1002 (CANCELLED)
+   filter o-1003 (PAID)
+   map    o-1003
+   filter o-1004 (PENDING)
+   filter o-1005 (PAID)
+   map    o-1005
+3. result [o-1001, o-1003, o-1005]
+```
+
+**Walkthrough.** Line 2 appears **before** any `filter` line: building the pipeline did nothing. Then, from `toList()`:
+
+| Order | `filter` runs? | Passes? | `map` runs? | Added to the result |
+|---|---|---|---|---|
+| o-1001 (PAID) | yes | yes | yes | o-1001 |
+| o-1002 (CANCELLED) | yes | no | no | (none) |
+| o-1003 (PAID) | yes | yes | yes | o-1003 |
+| o-1004 (PENDING) | yes | no | no | (none) |
+| o-1005 (PAID) | yes | yes | yes | o-1005 |
+
+It is *not* "filter all five, then map the three survivors": `map o-1001` comes before `filter o-1002`.
+
+**Experiment.** Change `paidIds.toList()` to `paidIds.limit(1).toList()`. Predict how many `filter` lines you'll see, then run it. (Answer at the end.)
+
+### Short-circuiting
+
+**Concept.** Some terminal operations can answer before reading everything. `findFirst` stops at the first match, `anyMatch` stops at the first `true`, and `limit` stops an otherwise endless source.
+
+```java
+// File: ShortCircuitDemo.java (runnable, Java 21)
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Stream;
+
+public class ShortCircuitDemo {
+
+    enum Status { PAID, PENDING, CANCELLED }
+
+    record Order(String id, String customer, Status status, long totalCents) {}
+
+    static List<Order> sampleOrders() {               // the same five ShopFlow orders in every example
+        return List.of(
+            new Order("o-1001", "ana", Status.PAID,      8_000),
+            new Order("o-1002", "ben", Status.CANCELLED, 3_000),
+            new Order("o-1003", "ana", Status.PAID,      2_500),
+            new Order("o-1004", "cy",  Status.PENDING,   4_500),
+            new Order("o-1005", "cy",  Status.PAID,     12_000));
+    }
+
+    public static void main(String[] args) {
+        List<Order> orders = sampleOrders();
+
+        // First paid order over EUR 50 (5,000 cents): stops as soon as it is found
+        Optional<Order> firstBig = orders.stream()
+                .filter(o -> {
+                    System.out.println("   checking " + o.id());
+                    return o.status() == Status.PAID && o.totalCents() > 5_000;
+                })
+                .findFirst();
+        System.out.println("first big paid order: " + firstBig.map(Order::id).orElse("none"));
+
+        // anyMatch also stops early: is there any cancelled order?
+        boolean anyCancelled = orders.stream()
+                .peek(o -> System.out.println("   looking at " + o.id()))
+                .anyMatch(o -> o.status() == Status.CANCELLED);
+        System.out.println("any cancelled: " + anyCancelled);
+
+        // An infinite source becomes finite with limit()
+        List<Integer> firstThreeMultiplesOf7 = Stream.iterate(1, n -> n + 1)
+                .filter(n -> n % 7 == 0)
+                .limit(3)
+                .toList();
+        System.out.println("first three multiples of 7: " + firstThreeMultiplesOf7);
+    }
+}
+```
+
+**Expected output** (run on OpenJDK 21.0.8, 2026-10-21):
+
+```text
+   checking o-1001
+first big paid order: o-1001
+   looking at o-1001
+   looking at o-1002
+any cancelled: true
+first three multiples of 7: [7, 14, 21]
+```
+
+**Walkthrough.**
+
+| Pipeline | Orders read | Why it stopped |
+|---|---|---|
+| `findFirst` paid order over EUR 50 | 1 (o-1001) | o-1001 is paid and 8,000 > 5,000: the answer is known |
+| `anyMatch` cancelled | 2 (o-1001, o-1002) | o-1002 is cancelled: the answer is `true` |
+| `iterate` + `filter` + `limit(3)` | 21 numbers | `limit` closed the endless source after the third match (7, 14, 21) |
+
+Without `limit`, the last pipeline would never finish.
+
+**Experiment.** Raise the threshold in the `findFirst` pipeline from `5_000` to `10_000`. Predict which orders are checked and which one is found. (Answer at the end.)
+
+### Stateful steps hold the flow
+
+**Concept.** `sorted` can't release the smallest order until it has seen them all. So everything before it runs first, and everything after it runs afterwards.
+
+```java
+// File: SortedBarrierDemo.java (runnable, Java 21)
+import java.util.Comparator;
+import java.util.List;
+
+public class SortedBarrierDemo {
+
+    enum Status { PAID, PENDING, CANCELLED }
+
+    record Order(String id, String customer, Status status, long totalCents) {}
+
+    static List<Order> sampleOrders() {               // the same five ShopFlow orders in every example
+        return List.of(
+            new Order("o-1001", "ana", Status.PAID,      8_000),
+            new Order("o-1002", "ben", Status.CANCELLED, 3_000),
+            new Order("o-1003", "ana", Status.PAID,      2_500),
+            new Order("o-1004", "cy",  Status.PENDING,   4_500),
+            new Order("o-1005", "cy",  Status.PAID,     12_000));
+    }
+
+    public static void main(String[] args) {
+        List<String> byAmount = sampleOrders().stream()
+                .filter(o -> o.status() == Status.PAID)
+                .peek(o -> System.out.println("   before sorted: " + o.id()))
+                .sorted(Comparator.comparingLong(Order::totalCents))
+                .peek(o -> System.out.println("   after sorted:  " + o.id()))
+                .map(Order::id)
+                .toList();
+        System.out.println("paid orders, smallest first: " + byAmount);
+    }
+}
+```
+
+**Expected output** (run on OpenJDK 21.0.8, 2026-10-21):
+
+```text
+   before sorted: o-1001
+   before sorted: o-1003
+   before sorted: o-1005
+   after sorted:  o-1003
+   after sorted:  o-1001
+   after sorted:  o-1005
+paid orders, smallest first: [o-1003, o-1001, o-1005]
+```
+
+**Walkthrough.** All three "before sorted" lines come first, in source order (o-1001, o-1003, o-1005). Then `sorted` releases them by amount: o-1003 (2,500), o-1001 (8,000), o-1005 (12,000). `distinct` behaves the same way in spirit: it has to remember what it has already seen.
+
+**Experiment.** Delete the `.sorted(...)` line. Predict the order of the "before" and "after" lines. (Answer at the end.)
+
+### A stream is used once
+
+**Concept.** The first terminal operation consumes the stream. To compute two results, keep the *source* (or a recipe that builds a new stream), not the stream.
+
+```java
+// File: SingleUseDemo.java (runnable, Java 21)
+import java.util.List;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
+
+public class SingleUseDemo {
+
+    enum Status { PAID, PENDING, CANCELLED }
+
+    record Order(String id, String customer, Status status, long totalCents) {}
+
+    static List<Order> sampleOrders() {               // the same five ShopFlow orders in every example
+        return List.of(
+            new Order("o-1001", "ana", Status.PAID,      8_000),
+            new Order("o-1002", "ben", Status.CANCELLED, 3_000),
+            new Order("o-1003", "ana", Status.PAID,      2_500),
+            new Order("o-1004", "cy",  Status.PENDING,   4_500),
+            new Order("o-1005", "cy",  Status.PAID,     12_000));
+    }
+
+    public static void main(String[] args) {
+        Stream<Order> paid = sampleOrders().stream().filter(o -> o.status() == Status.PAID);
+
+        System.out.println("paid orders: " + paid.count());
+        try {
+            System.out.println("paid revenue: " + paid.mapToLong(Order::totalCents).sum());   // second use
+        } catch (IllegalStateException e) {
+            System.out.println("second use failed: " + e.getMessage());
+        }
+
+        // Fix: keep the recipe, not the stream. Each get() builds a new stream.
+        Supplier<Stream<Order>> paidOrders = () -> sampleOrders().stream().filter(o -> o.status() == Status.PAID);
+        System.out.println("paid orders: " + paidOrders.get().count());
+        System.out.println("paid revenue: " + paidOrders.get().mapToLong(Order::totalCents).sum());
+    }
+}
+```
+
+**Expected output** (run on OpenJDK 21.0.8, 2026-10-21):
+
+```text
+paid orders: 3
+second use failed: stream has already been operated upon or closed
+paid orders: 3
+paid revenue: 22500
+```
+
+**Walkthrough.** `count()` consumed `paid`; the second terminal operation on the same object throws. The `Supplier<Stream<Order>>` holds the recipe, and each `get()` builds a fresh stream from the list.
+
+**Real-world use.** A repository or service method that returns a `Stream<Order>` hands the caller a one-shot object. Unless the stream must be lazy (for example a very large or database-backed result, which the caller must also close), returning a `List<Order>` is simpler and safer for callers that need it twice.
 
 **Who guarantees what**
 
 | Layer | Responsible for |
 |---|---|
-| Stream library | Deferring work, running stages per element, short-circuiting, rejecting reuse |
-| Your lambdas | Being stateless and not changing the source (see below) |
+| Stream library | Deferring work, running steps per element, short-circuiting, rejecting reuse |
+| Your lambdas | Being stateless, not changing the source, not relying on side effects |
 | The source | Its own ordering and whether its size is known |
 | You | Calling exactly one terminal operation per stream |
 
 ## 5. Failure scenarios
 
-### Nothing happens
+These are realistic mistakes, each as a program you can run. Two simpler ones are already shown above: a pipeline without a terminal operation does nothing (the laziness example), and a reused stream throws (the single-use example).
 
-- **What happened?** A pipeline was built and never ended with a terminal operation.
-- **Why?** Intermediate operations are lazy; the documentation says traversal of the source doesn't begin until the terminal operation runs.
-- **What you see:** no output, no side effect, no error.
-- **Solutions:** end every pipeline with a terminal operation; be suspicious of a "stream" statement that ends in `map` or `peek`.
+### Trusting `peek` to run
 
-### Reusing a stream
+- **What happened?** A developer used `peek` to write an audit line for each order, and later to collect an audit trail.
+- **Why?** `peek` runs only for the elements the pipeline actually processes. With `count()` on a list whose size is known, the pipeline may not run at all; with `findFirst`, it stops after the first match.
 
-- **What happened?** A stream variable was used for two results.
-- **Why?** The stream is consumed by its first terminal operation.
-- **What you see:** `IllegalStateException: stream has already been operated upon or closed` (observed on Java 21.0.8).
-- **Solutions:** keep the source, not the stream, and create a new stream for each result.
+```java
+// File: PeekPitfallDemo.java (runnable, Java 21)
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
-### Relying on `peek` or on side effects
+public class PeekPitfallDemo {
 
-- **What happened?** `peek` printed for some elements and not others, or didn't run at all.
-- **Why?** Short-circuiting operations stop early. For `count()` on a list whose size is known, the pipeline may not run at all: `List.of(1,2,3).stream().peek(print).count()` returned 3 and printed nothing on 21.0.8, and the API note for `count()` says an implementation may skip the pipeline in that case.
-- **Solutions:** don't put required work in `peek`; use it only for debugging.
+    enum Status { PAID, PENDING, CANCELLED }
 
-### Changing the source while the pipeline runs
+    record Order(String id, String customer, Status status, long totalCents) {}
 
-- **What happened?** A lambda added to the list the stream was reading.
-- **What you see:** `ConcurrentModificationException` (observed with an `ArrayList`). The documentation calls a parameter that modifies the source *interfering* and requires non-interference.
-- **Solutions:** don't modify the source inside the pipeline; build the new data in the result.
-- **Note:** an element added to an `ArrayList` after `stream()` but before the terminal operation was included in the sum (observed). Don't rely on that.
+    static List<Order> sampleOrders() {               // the same five ShopFlow orders in every example
+        return List.of(
+            new Order("o-1001", "ana", Status.PAID,      8_000),
+            new Order("o-1002", "ben", Status.CANCELLED, 3_000),
+            new Order("o-1003", "ana", Status.PAID,      2_500),
+            new Order("o-1004", "cy",  Status.PENDING,   4_500),
+            new Order("o-1005", "cy",  Status.PAID,     12_000));
+    }
 
-### A shared list filled from a parallel stream
+    public static void main(String[] args) {
+        List<Order> orders = sampleOrders();
 
-- **What happened?** `IntStream.range(0, 10_000).parallel().forEach(list::add)` on a plain `ArrayList`.
-- **What you see:** in five runs the list held 6,788, 4,625, 3,104, 5,868 and 6,706 elements instead of 10,000 (observed), with no error.
-- **Why?** The lambda has a side effect on shared mutable state, which the documentation warns about.
-- **Solutions:** let the stream produce the result (`toList()` or a collector) instead of adding to a shared list.
+        // Mistake 1: expecting peek to run for every element of count()
+        long counted = orders.stream()
+                .peek(o -> System.out.println("   audit " + o.id()))
+                .count();
+        System.out.println("counted " + counted + " orders, audit lines printed above: none");
+
+        // Mistake 2: using peek to record an audit trail, then short-circuiting
+        List<String> audited = new ArrayList<>();
+        Optional<Order> firstPaid = orders.stream()
+                .peek(o -> audited.add(o.id()))
+                .filter(o -> o.status() == Status.PAID)
+                .findFirst();
+        System.out.println("first paid: " + firstPaid.map(Order::id).orElse("none") + ", audited: " + audited);
+
+        // Correct: make the audit a deliberate step of its own, not a side effect of a query
+        List<String> auditTrail = orders.stream().map(Order::id).toList();
+        System.out.println("audit trail: " + auditTrail);
+    }
+}
+```
+
+**Expected output** (run on OpenJDK 21.0.8, 2026-10-21):
+
+```text
+counted 5 orders, audit lines printed above: none
+first paid: o-1001, audited: [o-1001]
+audit trail: [o-1001, o-1002, o-1003, o-1004, o-1005]
+```
+
+- **What you see:** no audit lines at all for `count()`, and only one audited order for `findFirst`, with no error.
+- **Solution:** make required work a deliberate step of its own (as in the last pipeline, or a plain loop); keep `peek` for temporary debugging.
+
+### Filling a shared list from a parallel stream
+
+- **What happened?** Results were added to an `ArrayList` from `parallel().forEach(...)`.
+- **Why?** Several threads call `add` on the same non-thread-safe list at once, and some additions are lost (or the list's internal array is corrupted).
+
+```java
+// File: SharedListMistakeDemo.java (runnable, Java 21)
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.IntStream;
+
+public class SharedListMistakeDemo {
+
+    public static void main(String[] args) {
+        for (int run = 1; run <= 3; run++) {
+            List<Integer> shared = new ArrayList<>();            // not thread-safe
+            try {
+                IntStream.range(0, 10_000).parallel().forEach(shared::add);   // MISTAKE: side effect on shared state
+                System.out.println("run " + run + ": shared list has " + shared.size() + " of 10000");
+            } catch (RuntimeException e) {
+                System.out.println("run " + run + ": failed with " + e.getClass().getSimpleName());
+            }
+        }
+
+        // Correct: let the stream build the result
+        List<Integer> result = IntStream.range(0, 10_000).parallel().boxed().toList();
+        System.out.println("toList() result has " + result.size() + " of 10000");
+    }
+}
+```
+
+**Example output** (run on OpenJDK 21.0.8, 2026-10-21). The three "shared list" sizes **change on every run**, and a run may instead fail with an exception; the last line is always the same:
+
+```text
+run 1: shared list has 4586 of 10000
+run 2: shared list has 1738 of 10000
+run 3: shared list has 1232 of 10000
+toList() result has 10000 of 10000
+```
+
+- **What you see:** silently missing data, which is worse than an exception.
+- **Solution:** let the stream build the result (`toList()` or a collector); never mutate shared state from a lambda.
+
+### Changing the source while the stream reads it
+
+- **What happened?** A lambda added elements to the very list the stream was reading.
+- **Why?** The documentation calls this *interference* and requires lambdas not to modify the source.
+
+```java
+// File: InterferenceDemo.java (runnable, Java 21)
+import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
+import java.util.List;
+
+public class InterferenceDemo {
+
+    public static void main(String[] args) {
+        List<String> orderIds = new ArrayList<>(List.of("o-1001", "o-1002"));
+
+        try {
+            orderIds.stream().forEach(id -> orderIds.add(id + "-copy"));   // MISTAKE: changes the source
+        } catch (ConcurrentModificationException e) {
+            System.out.println("changing the source failed: ConcurrentModificationException");
+        }
+
+        // Correct: build the new data as the result, from an unchanged source
+        List<String> source = List.of("o-1001", "o-1002");
+        List<String> copies = source.stream().map(id -> id + "-copy").toList();
+        System.out.println("copies: " + copies);
+    }
+}
+```
+
+**Expected output** (run on OpenJDK 21.0.8, 2026-10-21):
+
+```text
+changing the source failed: ConcurrentModificationException
+copies: [o-1001-copy, o-1002-copy]
+```
+
+- **Solution:** build new data as the stream's result from an unchanged source.
 
 ## 6. Architectural decisions
 
-- **`peek` and `forEach`** work only through side effects; use `peek` for debugging and keep `forEach` for the end, for effects such as logging, not for building results.
-- **`toList()` or `Collectors.toList()`?** `toList()` (Java 16+) returns an unmodifiable list: `add` threw `UnsupportedOperationException`. `Collectors.toList()` returned a modifiable list on 21.0.8, but the API gives no guarantee about its type or mutability; use `Collectors.toCollection(...)` when you need a specific kind.
-- **Keep lambdas small and pure** so the order and number of calls don't matter. **Common mistakes:** thinking steps run one after another over the whole data; counting on `peek` output; sharing a stream between methods.
+### `Stream.toList()` or `Collectors.toList()`?
 
-## 7. Check your understanding
+**Concept.** Both gather elements into a `List`, but they promise different things. `toList()` (Java 16+) returns an **unmodifiable** list. `Collectors.toList()` gives no promise about the list's type or whether you can change it. When you need a list you will modify, ask for one explicitly with `Collectors.toCollection(ArrayList::new)`.
 
-1. Predict the output order: `Stream.of(1,2,3).filter(x -> x > 1).peek(x -> print("p" + x)).map(x -> x * 10).forEach(x -> print("f" + x))`.
+```java
+// File: ToListDemo.java (runnable, Java 21)
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public class ToListDemo {
+
+    enum Status { PAID, PENDING, CANCELLED }
+
+    record Order(String id, String customer, Status status, long totalCents) {}
+
+    static List<Order> sampleOrders() {               // the same five ShopFlow orders in every example
+        return List.of(
+            new Order("o-1001", "ana", Status.PAID,      8_000),
+            new Order("o-1002", "ben", Status.CANCELLED, 3_000),
+            new Order("o-1003", "ana", Status.PAID,      2_500),
+            new Order("o-1004", "cy",  Status.PENDING,   4_500),
+            new Order("o-1005", "cy",  Status.PAID,     12_000));
+    }
+
+    public static void main(String[] args) {
+        List<Order> orders = sampleOrders();
+
+        List<String> a = orders.stream().map(Order::id).toList();                      // Java 16+
+        List<String> b = orders.stream().map(Order::id).collect(Collectors.toList());
+        List<String> c = orders.stream().map(Order::id).collect(Collectors.toCollection(ArrayList::new));
+
+        tryAdd("Stream.toList()", a);
+        tryAdd("Collectors.toList()", b);
+        tryAdd("Collectors.toCollection(ArrayList::new)", c);
+    }
+
+    static void tryAdd(String how, List<String> list) {
+        try {
+            list.add("o-9999");
+            System.out.println(how + ": add worked, size " + list.size());
+        } catch (UnsupportedOperationException e) {
+            System.out.println(how + ": add failed with UnsupportedOperationException");
+        }
+    }
+}
+```
+
+**Expected output** (run on OpenJDK 21.0.8, 2026-10-21):
+
+```text
+Stream.toList(): add failed with UnsupportedOperationException
+Collectors.toList(): add worked, size 6
+Collectors.toCollection(ArrayList::new): add worked, size 6
+```
+
+| You need | Use | Why |
+|---|---|---|
+| A result nobody should change (most service and DTO results) | `stream.toList()` | Unmodifiable, short, Java 16+ |
+| A list you will add to or sort in place | `Collectors.toCollection(ArrayList::new)` | Guaranteed `ArrayList` |
+| Older code, or a collector inside another collector | `Collectors.toList()` | Works, but don't rely on it being modifiable: it was here, the API doesn't promise it |
+
+**Practical implication.** Switching a method from `collect(Collectors.toList())` to `toList()` is not a pure refactoring: a caller that adds to the returned list will now get `UnsupportedOperationException` at run time.
+
+**When to use streams at all.** For filter-transform-gather work with small, pure steps. Use `forEach` only at the end, for effects such as logging, and `peek` only to debug. **Common mistakes:** thinking steps run over the whole data one after another; counting on `peek` output; sharing a stream between methods.
+
+## 7. Try it yourself
+
+Use the shared setup (the `Status` enum, the `Order` record and `sampleOrders()`) from any example above. Write the program first, run it, then compare with the solutions at the end.
+
+1. **Pending revenue.** Print the total of all `PENDING` orders in euros, in the form `pending revenue = EUR 45.00`.
+2. **Big paid orders, largest first.** Print the ids of `PAID` orders over EUR 50, largest amount first. Expected result: `[o-1005, o-1001]`.
+3. **Predict, then run.** Without running it, write down the exact output of this pipeline, then run it inside a `main` method with the shared setup:
+
+```java
+sampleOrders().stream()
+        .filter(o -> o.totalCents() >= 4_500)
+        .peek(o -> System.out.println("peek " + o.id()))
+        .map(Order::customer)
+        .forEach(c -> System.out.println("got  " + c));
+```
+
+## 8. Check your understanding
+
+1. In the laziness example, why is "pipeline built, nothing has run yet" printed before any `filter` line?
 2. A method returns a `Stream<Order>` that the caller uses twice. What goes wrong, and what should the method return instead?
-3. Why does `sorted()` change the order in which `peek` calls appear?
-4. A teammate adds results to a shared `ArrayList` inside `parallelStream().forEach(...)`. What do you tell them?
+3. Why does `sorted()` change the order in which the `peek` lines appear?
+4. A teammate adds results to a shared `ArrayList` inside `parallelStream().forEach(...)`, and the tests pass. What do you tell them?
 
 Answers are at the end of this note.
 
-## 8. Revision
+## 9. Revision
 
 **Remember**
 - **Nothing runs without a terminal operation.**
 - **Elements go through the whole pipeline one at a time**, except past a stateful step such as `sorted`.
 - **Short-circuiting operations stop early**, so side effects may not run.
-- **A stream is used once.**
-- **Don't change the source or share mutable state inside lambdas.**
+- **A stream is used once**: keep the source, not the stream.
+- **No shared mutable state and no changes to the source inside lambdas.**
 
 **Explain in 15 seconds:** "A stream pipeline is lazy: intermediate operations describe the work and the terminal operation runs it, one element at a time, once."
 
@@ -154,30 +587,154 @@ Answers are at the end of this note.
 **Likely follow-up questions:**
 - **Is a stream a collection?** No, it stores nothing; it conveys elements from a source through the pipeline.
 - **Why is the stream lazy?** So it can short-circuit and avoid reading or processing elements it doesn't need.
+- **`toList()` or `Collectors.toList()`?** `toList()` for results nobody should change; `toCollection(ArrayList::new)` when you need to modify the list.
 
-**Architect's takeaway:** treat a pipeline as a description that runs once, and keep every lambda free of shared state so the result doesn't depend on how the library runs it.
+**Architect's takeaway:** treat a pipeline as a description that runs once, and keep every lambda free of shared state, so the result doesn't depend on how the library chooses to run it.
 
 **Next topic:** transforming and filtering with `map`, `filter` and `flatMap` (13.2.3, planned).
 
-## 9. Verification and sources
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 against the Java SE 21 documentation, and by running the experiments above on OpenJDK 21.0.8 (macOS). Re-verify for other versions.
+> Checked 2026-10-21 against the Java SE 21 documentation. Every program marked runnable in this note, including the solutions, is run automatically on OpenJDK 21.0.8 and its output compared with this note (`tools/check-java-examples.py`); the shared-list example's sizes vary between runs and are not compared.
 
 - **Confirmed (Java SE 21 `java.util.stream` package summary):** a pipeline is a source, zero or more intermediate operations and a terminal operation; intermediate operations are lazy and traversal doesn't begin until the terminal operation runs; the elements of a stream are visited only once and a consumed stream can't be used again; behavioural parameters must be non-interfering and in most cases stateless; side effects are discouraged, and `forEach` and `peek` work only through side effects; stateful operations such as `distinct` and `sorted` may need to process the entire input before producing a result; short-circuiting operations such as `limit` and `findFirst` can finish on infinite input.
-- **Confirmed (`Stream` Javadoc):** `peek` exists mainly for debugging and isn't invoked for elements optimised away; an implementation of `count()` may not execute the pipeline when it can compute the count from the source; `toList()` (since Java 16) returns an unmodifiable list with no guarantee about its implementation type.
-- **Observed (OpenJDK 21.0.8):** every output in section 4 and section 5, including the lost elements from the parallel `ArrayList` example (single sets of runs; the exact counts vary).
-- **Assumptions and illustrations:** the ShopFlow story.
-- **To verify:** the late-binding behaviour of an `ArrayList` source in other versions (observed only); whether `IllegalStateException` text is the same in other releases.
-- **Decision rule:** one terminal operation per stream; no shared mutable state or source changes in lambdas; use `peek` only to debug.
+- **Confirmed (`Stream` Javadoc):** `peek` exists mainly for debugging and isn't invoked for elements that are optimised away; an implementation of `count()` may not execute the pipeline when it can compute the count from the source; `toList()` (since Java 16) returns an unmodifiable list with no guarantee about its implementation type, and `Collectors.toCollection(Supplier)` is the documented way to get more control.
+- **Observed (OpenJDK 21.0.8):** every expected output above, the experiment results and the exercise solutions; the shared-list sizes are from one set of runs.
+- **Assumptions and illustrations:** the ShopFlow scenario and data.
+- **To verify:** whether the `IllegalStateException` message text is the same in other releases.
+- **Decision rule:** one terminal operation per stream; no shared mutable state or source changes in lambdas; `peek` only to debug; `toList()` unless you need to modify the list.
 
 **Sources:** Java SE 21 API documentation, package `java.util.stream` and interface `Stream`.
 
 ## Answers
 
-1. `p2`, `f20`, `p3`, `f30`. Element 1 is filtered out; element 2 goes all the way through (peek, map, forEach) before element 3 starts.
-2. The second use throws `IllegalStateException` because the first terminal operation consumed the stream. Return the source (for example a `List<Order>`) or a `Supplier<Stream<Order>>`, and let each caller create its own stream.
-3. `sorted` is a stateful step that must see all elements before passing any on, so all the upstream `peek` calls run first and the downstream ones after.
-4. It is a side effect on shared mutable state: the parallel run can silently lose elements (in the run above the list ended with 3,104 to 6,788 of 10,000). Let the stream build the result with `toList()` or a collector.
+1. Building the pipeline only creates the description; the `filter` and `map` lambdas run when `toList()` starts the pipeline, after line 2 has been printed.
+2. The second use throws `IllegalStateException`, because the first terminal operation consumed the stream. Return the data (a `List<Order>`) or a `Supplier<Stream<Order>>`, so each caller builds its own stream.
+3. `sorted` is a stateful step that must see all elements before passing any on, so every upstream `peek` runs first and every downstream one afterwards.
+4. It is a side effect on shared mutable state: a parallel run can silently lose elements (in the runs above the list held 1,232 to 4,586 of 10,000). Passing tests prove nothing here; let the stream build the result with `toList()` or a collector.
+
+**Experiment results** (each change made to the program above, then run on OpenJDK 21.0.8):
+
+- *Laziness, with `limit(1)`:* only one order is read. The output after line 2 is `filter o-1001 (PAID)`, `map    o-1001`, then `3. result [o-1001]`. `limit` is short-circuiting, so the source stops after the first match.
+- *Short-circuiting, threshold `10_000`:* all five orders are checked (o-1001 to o-1005) and `first big paid order: o-1005` is printed, because only o-1005 (12,000) is paid and over 10,000. The `anyMatch` and multiples-of-7 lines don't change.
+- *Without `sorted`:* the lines interleave, each order going all the way through: `before o-1001`, `after o-1001`, `before o-1003`, `after o-1003`, `before o-1005`, `after o-1005`, and the result is in source order, `[o-1001, o-1003, o-1005]`.
+
+**Exercise solutions** (run on OpenJDK 21.0.8; your version may differ in style but should print the same):
+
+```java
+// File: PendingRevenue.java (runnable, Java 21)
+import java.util.List;
+
+public class PendingRevenue {
+
+    enum Status { PAID, PENDING, CANCELLED }
+
+    record Order(String id, String customer, Status status, long totalCents) {}
+
+    static List<Order> sampleOrders() {               // the same five ShopFlow orders in every example
+        return List.of(
+            new Order("o-1001", "ana", Status.PAID,      8_000),
+            new Order("o-1002", "ben", Status.CANCELLED, 3_000),
+            new Order("o-1003", "ana", Status.PAID,      2_500),
+            new Order("o-1004", "cy",  Status.PENDING,   4_500),
+            new Order("o-1005", "cy",  Status.PAID,     12_000));
+    }
+
+    public static void main(String[] args) {
+        long pending = sampleOrders().stream()
+                .filter(o -> o.status() == Status.PENDING)
+                .mapToLong(Order::totalCents)
+                .sum();
+        System.out.printf("pending revenue = EUR %d.%02d%n", pending / 100, pending % 100);
+    }
+}
+```
+
+**Expected output**:
+
+```text
+pending revenue = EUR 45.00
+```
+
+```java
+// File: BigPaidOrders.java (runnable, Java 21)
+import java.util.Comparator;
+import java.util.List;
+
+public class BigPaidOrders {
+
+    enum Status { PAID, PENDING, CANCELLED }
+
+    record Order(String id, String customer, Status status, long totalCents) {}
+
+    static List<Order> sampleOrders() {               // the same five ShopFlow orders in every example
+        return List.of(
+            new Order("o-1001", "ana", Status.PAID,      8_000),
+            new Order("o-1002", "ben", Status.CANCELLED, 3_000),
+            new Order("o-1003", "ana", Status.PAID,      2_500),
+            new Order("o-1004", "cy",  Status.PENDING,   4_500),
+            new Order("o-1005", "cy",  Status.PAID,     12_000));
+    }
+
+    public static void main(String[] args) {
+        List<String> bigPaid = sampleOrders().stream()
+                .filter(o -> o.status() == Status.PAID)
+                .filter(o -> o.totalCents() > 5_000)                              // over EUR 50
+                .sorted(Comparator.comparingLong(Order::totalCents).reversed())   // largest first
+                .map(Order::id)
+                .toList();
+        System.out.println("big paid orders, largest first: " + bigPaid);
+    }
+}
+```
+
+**Expected output**:
+
+```text
+big paid orders, largest first: [o-1005, o-1001]
+```
+
+Exercise 3: `filter` keeps o-1001 (8,000), o-1004 (4,500) and o-1005 (12,000); each surviving order goes through `peek`, `map` and `forEach` before the next one starts.
+
+```java
+// File: PredictOrder.java (runnable, Java 21)
+import java.util.List;
+
+public class PredictOrder {
+
+    enum Status { PAID, PENDING, CANCELLED }
+
+    record Order(String id, String customer, Status status, long totalCents) {}
+
+    static List<Order> sampleOrders() {               // the same five ShopFlow orders in every example
+        return List.of(
+            new Order("o-1001", "ana", Status.PAID,      8_000),
+            new Order("o-1002", "ben", Status.CANCELLED, 3_000),
+            new Order("o-1003", "ana", Status.PAID,      2_500),
+            new Order("o-1004", "cy",  Status.PENDING,   4_500),
+            new Order("o-1005", "cy",  Status.PAID,     12_000));
+    }
+
+    public static void main(String[] args) {
+        sampleOrders().stream()
+                .filter(o -> o.totalCents() >= 4_500)
+                .peek(o -> System.out.println("peek " + o.id()))
+                .map(Order::customer)
+                .forEach(c -> System.out.println("got  " + c));
+    }
+}
+```
+
+**Expected output**:
+
+```text
+peek o-1001
+got  ana
+peek o-1004
+got  cy
+peek o-1005
+got  cy
+```
 
 Back to [the streams overview](01-streams-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).

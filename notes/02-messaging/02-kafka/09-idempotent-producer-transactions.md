@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.9 · Intermediate** · Last updated 2026-10-21
 **Prerequisites:** [Producers](03-producers-keys-acks-batching.md) (2.2.3), [Offset commits](05-offset-commits-delivery-guarantees.md) (2.2.5)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Kafka's **exactly-once** support has two parts: the **idempotent producer**, which stops duplicates caused by retries, and **transactions**, which make "write these output events" and "mark these input events as done" happen together or not at all.
 

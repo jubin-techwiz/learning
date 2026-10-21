@@ -20,6 +20,9 @@ A reusable, technology-neutral prompt for an AI assistant writing or revising a 
 - Separate the guarantees of each layer (platform or broker, framework, application, external systems).
 - Add a diagram only if it shows an interaction, sequence, state, decision or failure that text cannot; keep it small and valid Mermaid. Add code only if it teaches something the text cannot; keep it small and label it an untested sketch or as run on stated versions.
 - Add a "Try it yourself" section only if running something teaches more than reading, and mark its real status (not run, or run on which versions, when, with what observed result).
+- Decide the topic type first (programming, architecture and design patterns, or conceptual; `LEARNING-STANDARD.md`, section 3) and let it decide what carries the teaching. For programming topics, give each important concept a worked example: concept, simple example, complete runnable code for the stated version (marked `// File: Name.java (runnable, Java 21)` for Java), the exact expected output from a real run, a walkthrough that traces the data, an experiment, a real-world use, a runnable common mistake with its fix, and when to use it. Never present shorthand as code, and use the area's shared domain model and sample data.
+- For programming topics, add two to four practice exercises and put their runnable solutions, and the experiments' results, in the Answers section.
+- The topic is done only when the learner can explain it, recognise when it applies and, where practical, practise it; correct definitions alone are not enough.
 - Write three to five questions that test understanding, and put the answers at the end of the note.
 - Add an "Elsewhere" line only if a case from another industry teaches something the ShopFlow example doesn't. Add a "Common mistakes" line only if it contains gotchas not already covered by the failure scenarios or decisions. Add the interview follow-up questions only if they go beyond the check questions. A simple topic should stay short; never pad to reach a length.
 - Make every reference to another note a relative link.
@@ -27,6 +30,6 @@ A reusable, technology-neutral prompt for an AI assistant writing or revising a 
 
 **Before finishing:**
 - Walk through the quality checklist in `LEARNING-STANDARD.md`.
-- Run `./tools/check-notes.sh` (with `KENMORA_WEB` set for the render and Mermaid checks) and fix every problem it reports; check that nothing contradicts other notes.
+- Run `./tools/check-notes.sh` (with `KENMORA_WEB` set for the render and Mermaid checks; it also runs the runnable Java examples when a JDK is installed) and fix every problem it reports; check that nothing contradicts other notes. Never write an expected output that didn't come from a real run.
 - Update the prerequisites and next-topic links, the overview, glossary, cheat sheet, `notes/README.md`, `notes/roadmap.md` and `progress/<area>.md` as needed.
 - Report what you changed, what you verified (with sources), and what remains unverified.

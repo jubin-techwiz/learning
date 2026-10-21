@@ -13,7 +13,7 @@ updated: "2026-10-21"
 
 Read this first. It is the map of the resilience area: the problem these patterns solve, what each one is for, how they relate, and the order to learn them in.
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** Resilience patterns are a small family of **independent** techniques that stop one slow or broken dependency from taking your whole system down.
 

@@ -48,22 +48,32 @@ Every topic note follows this progression:
 | # | Section | Required? | What it does |
 |---|---|---|---|
 | | Front matter, title, position line | Yes | `title`, `tags`, `category`, `level`, `updated`; step, level and prerequisites |
-| 1 | **The concept in simple English** | Yes | What is it? Why do we need it? When would I meet it? Memory hook |
+| 1 | **What it is and why it matters** | Yes | What is it? Why do we need it? When would I meet it? Memory hook |
 | 2 | **Mental model** | When an analogy genuinely helps | The analogy, a mapping table to the real components, and where the analogy stops being accurate |
 | 3 | **Industry terms** | Yes | Only the terms this topic needs, in the five-column format (section 5) |
 | 4 | **In a real system (ShopFlow)** | Yes | Business problem first, then how the concept solves it, then what it costs; a "before" diagram only where a picture helps; optionally an **Elsewhere** line with short cases from other industries, when they add understanding |
-| 5 | **How it works** | Yes | A numbered flow (what starts it, who takes part, what happens on success and failure); a diagram only if it shows an interaction, sequence, state or decision; "who guarantees what" when several layers are involved; code only if it teaches something the text can't |
+| 5 | **How it works** | Yes | A numbered flow (what starts it, who takes part, what happens on success and failure); a diagram only if it shows an interaction, sequence, state or decision; "who guarantees what" when several layers are involved; code only if it teaches something the text can't. **Programming topics:** one worked example per important concept (section 8) |
 | 6 | **Failure scenarios** | When failures are part of the topic | One to three concrete cases in the five-part format (section 9) |
 | 7 | **Architectural decisions** | For substantial concepts | When to use, when not, alternatives, and only the dimensions that matter; an optional one-line **Common mistakes** list for gotchas not covered as failure scenarios |
-| 8 | **Try it yourself** | Optional | A small predict-then-run experiment, with honest status |
+| 8 | **Try it yourself** | Optional; expected for programming topics | A small predict-then-run experiment, with honest status; for programming topics, two to four practice exercises whose solutions are runnable and kept in Answers |
 | 9 | **Check your understanding** | Yes | Three to five questions; answers at the end of the note |
 | 10 | **Revision** | Yes | Remember, 15-second answer, 60-second answer, likely follow-up questions (optional), architect's takeaway, next topic |
 | 11 | **Verification and sources** | Yes | Confirmed facts with sources and versions; assumptions; items to verify |
-| | **Answers** | Yes | Answers to section 9, kept at the very end |
+| | **Answers** | Yes | Answers to section 9 (and solutions to the practice exercises), kept at the very end |
 
 **Numbering when sections are left out.** Number the sections that are present, in this order, without gaps. A note without "Try it yourself" therefore has Check your understanding as section 8, Revision as 9 and Verification as 10. Keep the section names unchanged so notes stay easy to scan.
 
-**Proportionality.** The order of the progression is fixed; the amount in each step is not. A small topic may need no analogy, no diagram, no code, no failure scenarios and no "Elsewhere" line; say what matters and stop. The sections that are always present are: the concept in simple English, industry terms (only those the topic needs), the ShopFlow example, the numbered flow of how it works, check your understanding, revision and verification. Everything else appears only when it earns its place. Never add a diagram, analogy, code block, industry example or extra paragraph just to fill a slot, or to reach a word count.
+**Proportionality.** The order of the progression is fixed; the amount in each step is not. A small topic may need no analogy, no diagram, no code, no failure scenarios and no "Elsewhere" line; say what matters and stop. The sections that are always present are: what it is and why it matters, industry terms (only those the topic needs), the ShopFlow example, the numbered flow of how it works, check your understanding, revision and verification. Everything else appears only when it earns its place. Never add a diagram, analogy, code block, industry example or extra paragraph just to fill a slot, or to reach a word count.
+
+**Adapt the format to the topic.** The progression stays the same, but what carries the teaching depends on the kind of topic:
+
+| Topic type | Examples | What carries the teaching |
+|---|---|---|
+| **Programming** | Java Streams, Spring Boot, SQL, testing | Worked examples with complete runnable code, exact output, a trace of the data, an experiment and a runnable mistake-and-fix (section 8); practice exercises with runnable solutions |
+| **Architecture and design patterns** | Circuit breaker, Kafka partitioning, outbox | Diagrams, a ShopFlow scenario, trade-offs and failure cases; a small runnable demo or experiment where it makes the behaviour visible |
+| **Conceptual** | CAP, consistency models, architect skills | Concrete examples, scenarios and exercises; no code forced in where it teaches nothing |
+
+**Definition of done.** A topic is not complete because its definitions are correct. It is complete when the learner can explain it in plain words, recognise when it applies (and when it doesn't), and, where practical, practise it: for programming topics, by running and changing the examples and solving the exercises.
 
 **Length.** Aim for the shortest note that gives complete understanding with its important conditions. As a rough ceiling, up to about 2,000 words of prose (not counting code, diagrams and tables); many topics need far fewer. The number is never a target, and a short note is not a defect. Cut repetition and generic advice before cutting explanation, failure cases or conditions.
 
@@ -128,6 +138,28 @@ Use a diagram when it shows an **interaction, a sequence, a state change, a deci
 - Small, focused snippets with a clear learning purpose; explain the important lines in comments or the text.
 - State the status above every block: *untested sketch* or *run on <versions>*. Never imply code was run when it wasn't.
 - Mark names that change between versions and say "check your version".
+- **Runnable means complete.** A block presented as runnable contains everything needed: imports, sample data, model types (records), a `main` method, and nothing elided (`...`) or invented (helper methods that aren't shown). Shorthand such as `filter(even)` is never presented as code; if illustrative notation is useful, label it "illustration, not runnable" and keep it out of code blocks.
+
+### Worked examples (programming topics)
+
+For each **important** concept (not every small subtopic), teach with a worked example in this order, keeping each part short and dropping parts that add nothing:
+
+1. **Concept**: what it is and why it is useful, in two or three sentences.
+2. **Simple example**: the smallest case that shows it.
+3. **Complete runnable code**: a self-contained program for the stated language version.
+4. **Expected output**: the exact output, copied from a real run.
+5. **Walkthrough**: trace representative input elements through the code, ideally as a small table, and show how the result is produced.
+6. **Experiment**: one small change to predict, run and observe; the result goes in Answers.
+7. **Real-world example**: the same idea in backend business logic (ShopFlow).
+8. **Common mistake**: a realistic mistake as runnable code, why it happens, and the corrected version.
+9. **When to use it**: benefits, limits and alternatives (often in "Architectural decisions").
+
+**Conventions for Java examples** (so they can be verified):
+- The first line of a runnable block is `// File: Name.java (runnable, Java 21)`; the program's public class is `Name`, and it runs on its own with the single-file launcher (`java Name.java`).
+- Immediately after it, a line containing **Expected output** and a `text` block with the exact output; or, when the output genuinely varies between runs (threads, time), **Example output** and a note saying what varies.
+- Use one consistent domain model per area. For Java topics this is ShopFlow's `Order` record and the same sample orders in every example; each file repeats that small setup so it stays runnable on its own, and the note says it is the shared setup.
+- `tools/check-java-examples.py` (run by `tools/check-notes.sh`) compiles and runs every such block and compares the output; a note with runnable Java is not done until it passes.
+- Other languages follow the same idea (complete program, real output, a stated version) until a checker exists for them; until then, say how and when the code was run.
 
 ## 9. Failure scenarios and who guarantees what
 
@@ -156,7 +188,8 @@ For substantial concepts, give the decision criteria: **when to use, when not to
 
 ## 11. Hands-on practice
 
-- Practice is **optional**. Add it only when running something teaches more than reading.
+- Practice is **optional for conceptual topics** and **expected for programming topics**: add it whenever running something teaches more than reading.
+- **Runnable examples inside notes** are the default for programming topics (section 8). Each area with runnable examples gives the setup once, in its overview: tool versions, how to check them, how to run an example from the terminal and from the editor, and what to do when it fails. Notes link to that section instead of repeating it.
 - **In a note:** a short "Try it yourself" section: prerequisites, commands, *predict first*, what to observe, one deliberate failure, cleanup, and an honest **status** ("not run in this repository" until it has been).
 - **A lab:** only when a larger runnable demo is worth it (usually on request). One lab per area in `labs/NN-<area>/<area>-demo/`, documented with the sections required in `labs/README.md`: objective, prerequisites with versions, configuration, commands, expected output, what to observe, a failure experiment, troubleshooting, cleanup and questions.
 - Prefer local, free infrastructure (Docker Compose or the existing lab setup). Never claim a demo passed unless it was run.
@@ -173,6 +206,7 @@ For substantial concepts, give the decision criteria: **when to use, when not to
 ## 13. Exercises, answers and revision
 
 - **Check your understanding:** three to five questions, mixing conceptual, "what happens if...?", troubleshooting and design-decision questions. They test understanding, not recall of definitions.
+- **Practice exercises** (programming topics): two to four small tasks, such as writing a pipeline or fixing a broken one, phrased so the learner can attempt them first. Their **solutions** are runnable examples (section 8), placed in the Answers section and verified like any other example.
 - **Answers** go in a final "Answers" section at the end of the note, so the reader can try first. Answers explain *why*.
 - **Revision:** *Remember* (three to five lines), *Explain in 15 seconds*, *Explain in 60 seconds* (with one qualification or trade-off), optionally *Likely follow-up questions* (three to five interview-style questions, each with a one-line answer, not repeating "Check your understanding"), *Architect's takeaway*, *Next topic* (a link).
 - **Interview practice** lives in the revision section and the cheat sheet; it complements understanding, never replaces it.
@@ -214,6 +248,8 @@ Before a note is considered done:
 - [ ] Decisions are compared against a specific requirement; no "always better" claims.
 - [ ] No unverified fact in the teaching sections; versions recorded for defaults; no invented numbers.
 - [ ] Code is small, explained and labelled with its status.
+- [ ] The format fits the topic type (section 3), and the definition of done is met: the learner can explain it, recognise when it applies and, where practical, practise it.
+- [ ] Programming topics: each important concept has a worked example; runnable code is complete, the expected output is exact, the walkthrough traces the data, the experiment's result is in Answers, and `tools/check-java-examples.py` passes. No illustrative notation is presented as code.
 - [ ] Three to five questions, with answers only at the end.
 - [ ] Revision section complete, with a working "next topic" link.
 - [ ] `./tools/check-notes.sh` passes (with `KENMORA_WEB` set): links resolve, structure is complete, diagrams parse, the page renders without warnings.

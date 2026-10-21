@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Resilience · Step 1.6 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Timeouts](02-timeouts.md) (1.2), [Circuit breaker](05-circuit-breaker.md) (1.5, as the sibling pattern)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A bulkhead limits how many calls can use one dependency **at the same time**. Calls beyond the limit are refused immediately, so a slow dependency can only tie up its own small share of your threads.
 

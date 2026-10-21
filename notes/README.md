@@ -109,7 +109,7 @@ The authoring rules live in `LEARNING-STANDARD.md` at the repository root (outsi
 
 | Section | Why it is there |
 |---|---|
-| **The concept in simple English** | What it is, why we need it, when you meet it, and a memory hook |
+| **What it is and why it matters** | What it is, why we need it, when you meet it, and a memory hook |
 | **Mental model** (optional) | An everyday analogy mapped to the real parts, and where the analogy breaks |
 | **Industry terms** | The vocabulary interviewers and colleagues use, with simple meanings and examples |
 | **In a real system (ShopFlow)** | The business problem first, then how the concept helps and what it costs, optionally short cases from other industries ("Elsewhere") |
@@ -127,6 +127,8 @@ Only the concept, the terms, the ShopFlow example, how it works, the questions, 
 > The resilience notes (1.1 to 1.10, with the cheat sheet) and the messaging notes (2.1 to 2.2.18) all use this format.
 
 **Notes with a "Try it yourself" experiment:** [2.2.2](02-messaging/02-kafka/02-log-topics-partitions-offsets.md), [2.2.4](02-messaging/02-kafka/04-consumers-consumer-groups.md), [2.2.5](02-messaging/02-kafka/05-offset-commits-delivery-guarantees.md), [2.2.7](02-messaging/02-kafka/07-rebalancing-static-membership.md) and [2.2.13](02-messaging/02-kafka/13-retention-compaction-tiered-storage.md). They need only a local Kafka broker and its command-line tools, and were run on Apache Kafka 4.3.2 on 2026-10-21.
+
+**Hands-on Java notes:** [13.2.1](13-java/02-streams/01-streams-overview.md) and [13.2.2](13-java/02-streams/02-pipeline-laziness.md) are built around complete Java 21 programs with their exact output, experiments and practice exercises with solutions. How to run them on a Mac (terminal or VS Code) is in [the Java overview](13-java/01-java-overview.md), section 5.
 
 ## The running example: ShopFlow
 

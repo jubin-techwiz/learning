@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Resilience · Step 1.2 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Resilience patterns: the big picture](01-resilience-overview.md) (1.1)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A timeout is a limit on how long you wait for a call. When it runs out, you stop waiting and treat the call as failed, so a hung dependency can't hold your threads forever.
 

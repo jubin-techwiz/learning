@@ -15,7 +15,7 @@ updated: "<YYYY-MM-DD>"
 
 Read this first. It is the map of the <area or series>: the problem it solves, what each topic is for, how they relate, and the learning order.
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** <...>
 

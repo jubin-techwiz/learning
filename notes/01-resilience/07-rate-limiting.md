@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Resilience · Step 1.7 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Resilience patterns: the big picture](01-resilience-overview.md) (1.1); related: [Bulkhead](06-bulkhead.md) (1.6)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A rate limiter caps how many requests a caller may make in a period of time and turns away the rest, so no single caller can use everyone's capacity.
 

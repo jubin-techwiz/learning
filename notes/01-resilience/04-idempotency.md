@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Resilience · Step 1.4 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [Timeouts](02-timeouts.md) (1.2), [Retries, backoff and jitter](03-retries-backoff-jitter.md) (1.3)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** An operation is **idempotent** if doing it twice has the same effect as doing it once. **Deduplication** is how a system makes an operation behave that way: it recognises a repeat and doesn't act on it again.
 

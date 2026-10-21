@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.15 · Advanced** · Last updated 2026-10-21
 **Prerequisites:** [Error handling and DLTs](08-error-handling-retries-dlt.md) (2.2.8), [Offset commits](05-offset-commits-delivery-guarantees.md) (2.2.5)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** **Kafka Connect** moves data between Kafka and other systems using ready-made connectors. **Change data capture (CDC)** streams every committed database change into Kafka by reading the database's own change log.
 

@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.10 · Intermediate** · Last updated 2026-10-21
 **Prerequisites:** [Producers](03-producers-keys-acks-batching.md) (2.2.3)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A **schema** is the agreed shape of an event. A **schema registry** stores every version of it and checks that changes stay **compatible**, so producers and consumers can change at different times without breaking each other.
 

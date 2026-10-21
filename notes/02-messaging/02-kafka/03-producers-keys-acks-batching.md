@@ -11,7 +11,7 @@ updated: "2026-10-21"
 **Messaging · Kafka · Step 2.2.3 · Fundamentals** · Last updated 2026-10-21
 **Prerequisites:** [The log, topics, partitions and offsets](02-log-topics-partitions-offsets.md) (2.2.2); helpful: [retries](../../01-resilience/03-retries-backoff-jitter.md), [idempotency](../../01-resilience/04-idempotency.md)
 
-## 1. The concept in simple English
+## 1. What it is and why it matters
 
 **What is it?** A **producer** is the client that writes events to Kafka. It picks a partition, groups events into batches, sends them to the right broker and waits for a confirmation called an **acknowledgement (ack)**.
 

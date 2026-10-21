@@ -30,7 +30,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 
-REQUIRED = ['The concept in simple English', 'Industry terms', 'In a real system (ShopFlow)', 'How it works',
+REQUIRED = ['What it is and why it matters', 'Industry terms', 'In a real system (ShopFlow)', 'How it works',
             'Check your understanding', 'Revision', 'Verification and sources']
 LAB_REFERENCE = re.compile(r'labs/|resilience-demo|circuit-breaker-demo|\bmvn |demo[-\w]*\.sh')
 BARE_STEP = re.compile(r'(?<![\[\d.\w/-])\((?:see |and )?(\d+\.\d+(?:\.\d+)?)\)')   # "(2.2.5)" and "(see 2.2.5)"
