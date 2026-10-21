@@ -9,19 +9,47 @@ updated: "2026-10-21"
 # Testing Resilience and Chaos Engineering
 
 **Resilience · Step 1.10 · Intermediate** · Last updated 2026-10-21
+**Prerequisites:** the earlier resilience notes, especially [Timeouts](02-timeouts.md) (1.2), [Circuit breaker](05-circuit-breaker.md) (1.5) and [Fallbacks](09-fallbacks-graceful-degradation.md) (1.9)
+
+## 1. The concept in simple English
+
+**What is it?** Resilience testing deliberately creates failures (slow calls, errors, lost servers) to check that timeouts, retries, breakers and fallbacks really work. **Chaos engineering** is the careful, experiment-based form of it.
+
+**Why do we need it?** These mechanisms only matter during failures, which normal tests rarely create. Until you have seen one fail and recover on purpose, it is an assumption.
+
+**When would I meet it?** Before go-live of a critical path, after changing a resilience setting, and in game days and incident follow-ups.
 
 > [!TIP]
-> **In one sentence:** resilience testing deliberately creates failures (slow calls, errors, lost servers) to check that timeouts, retries, breakers and fallbacks really work, and chaos engineering is the careful, experiment-based form of it.
->
-> **Memory hook:** a **fire drill**. You don't wait for a real fire to find out the exits are locked. You ring the alarm on purpose, on a calm day, with someone ready to stop it.
+> **Memory hook:** a fire drill. You don't wait for a real fire to find out the exits are locked. You ring the alarm on purpose, on a calm day, with someone ready to stop it.
 
-## Where it fits
+## 2. Mental model: a fire drill
 
-Step 1.10, the last step of the [resilience track](01-resilience-overview.md). It tests everything before it: [timeouts](02-timeouts.md), [retries](03-retries-backoff-jitter.md), the [circuit breaker](05-circuit-breaker.md), the [bulkhead](06-bulkhead.md), [rate limiting](07-rate-limiting.md), [load shedding](08-load-shedding-backpressure.md) and [fallbacks](09-fallbacks-graceful-degradation.md).
+| In the analogy | In the real system |
+|---|---|
+| Ringing the alarm on a calm day | **Fault injection** in a safe environment |
+| The assembly point headcount | The **steady state** measurement |
+| A drill that is stopped if someone is hurt | A **stop condition** |
+| Fixing the locked exit afterwards | Fixing the weakness the experiment found |
 
-## 1. The story
+**Where the analogy breaks:** a drill checks one fixed procedure. Failures in distributed systems combine in unexpected ways, so experiments also check **recovery** and the people and alerts around the system, not just the code.
 
-ShopFlow's team added a timeout, a retry, a circuit breaker and a fallback to `payment-service`. Code review looked fine. In the first real outage, the fallback threw a NullPointerException, the retry ran at two layers and tripled the load, and the timeout was longer than the gateway's, so customers saw gateway errors anyway. None of it had ever been exercised.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Fault injection** | Deliberately adding delays, errors or outages | The core technique | 3 s delay on stock calls | Chaos engineering |
+| **Steady state** | A measurable sign of normal | How you judge an experiment | Checkout success ≥ 99.5% | Observability |
+| **Hypothesis** | Your prediction of what the failure will do | Makes it an experiment | "Checkout stays within steady state" | Experiment |
+| **Blast radius** | How much the experiment can affect | Keep it small | One instance | Blast radius ([1.1](01-resilience-overview.md)) |
+| **Stop condition** | A rule that ends the experiment if impact grows | Safety | Success rate under 95% | Abort |
+| **Game day** | A planned session where the team breaks something and practises the response | Tests people and runbooks too | Kill a payment pod | Drill |
+| **Chaos engineering** | Disciplined, repeated failure experiments to build confidence | The mature end of the ladder | Automated instance termination | Fault injection |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** The team has added a timeout, a retry, a circuit breaker and a fallback to the Payment Service and wants evidence that they work together.
+
+Code review looked fine. In the first real outage, the fallback threw a NullPointerException, the retry ran at two layers and tripled the load, and the timeout was longer than the gateway's, so customers saw gateway errors anyway. None of it had ever been exercised.
 
 ```mermaid
 sequenceDiagram
@@ -35,11 +63,21 @@ sequenceDiagram
     Note over O: still retrying, fallback then crashes
 ```
 
-## 2. The idea
+**How testing helps.** A fault-injection test would have shown the NullPointerException; a load test the retry multiplication; a review of the time budget the mismatched timeouts.
 
-Treat every resilience mechanism as an **untested assumption** until you have seen it fail and recover on purpose. Start with cheap, automatic tests in the build, then move to realistic experiments as monitoring matures.
+**What it costs.** Time, tooling and a safe environment; real damage if the blast radius isn't controlled; and good observability as a prerequisite.
 
-**Chaos engineering** turns this into a scientific experiment: define what "normal" looks like, predict what a failure will do, inject it with a small **blast radius** and **stop conditions**, and learn from the difference.
+**Elsewhere:** large streaming and cloud operators run experiments such as terminating instances so every service must survive losing one; banks run regular failover drills to prove that recovery times on paper are real.
+
+## 5. How it works
+
+A ladder from cheap to realistic:
+
+1. **Unit tests:** make a fake dependency slow or failing and assert the timeout, retry and fallback behaviour.
+2. **Integration tests with fault injection:** put a fault-injecting stub or proxy in front of the dependency (for example WireMock, which can add a fixed delay to a response, random delays, or faults such as a connection reset).
+3. **Load and stress tests:** find real limits, shedding behaviour and retry storms.
+4. **Game days** in staging: break something, and practise detection, alerts and runbooks.
+5. **Chaos experiments**, automated and repeated, once monitoring is solid.
 
 ```mermaid
 flowchart LR
@@ -52,43 +90,7 @@ flowchart LR
     F --> A
 ```
 
-## 3. Key terms
-
-| Term | Plain meaning |
-|---|---|
-| **Fault injection** | Deliberately adding delays, errors or outages |
-| **Steady state** | A measurable sign of normal, such as success rate or p99 latency |
-| **Hypothesis** | Your prediction of what the failure will do |
-| **Blast radius** | How much the experiment can affect |
-| **Stop condition** | A rule that ends the experiment automatically if impact grows |
-| **Game day** | A planned session where the team breaks something and practises the response |
-| **Chaos engineering** | Disciplined, repeated failure experiments to build confidence |
-
-## 4. How it works, step by step
-
-A ladder from cheap to realistic:
-
-1. **Unit tests:** make a fake dependency slow or failing, assert the timeout, retry and fallback behaviour.
-2. **Integration tests with fault injection:** put a fault-injecting stub or proxy (for example WireMock, Toxiproxy) in front of the dependency.
-3. **Load and stress tests** (for example k6, Gatling, JMeter): find real limits, shedding behaviour and retry storms.
-4. **Game days** in staging: break something, and practise detection, alerts and runbooks.
-5. **Chaos experiments**, automated and repeated, once monitoring is solid.
-
-**What to check every time:** timeouts fire; retries are limited; the breaker opens and closes; the bulkhead refuses; 429s carry `Retry-After`; overload sheds low priority; fallbacks are flagged and harmless; alerts fire; and **recovery** works, not just survival.
-
-## 5. Real-world examples
-
-- **Video streaming:** randomly terminating servers in production (the idea behind Netflix's Chaos Monkey) forces every service to survive losing an instance.
-- **Cloud platforms:** managed fault-injection services run experiments such as stopping instances or adding latency, with alarms as automatic stop conditions.
-- **Banks and payment companies:** regular game days and disaster-recovery drills, such as failing over to a second region, to prove recovery times on paper are real.
-
-## 6. Design choices and trade-offs
-
-| Benefit | Cost |
-|---|---|
-| Finds weaknesses before customers do | Time, tooling and a safe environment |
-| Builds team confidence and skill | Real damage if the blast radius isn't controlled |
-| Verifies alerts and runbooks too | Needs good observability first |
+**What to check every time:** timeouts fire; retries are limited; the breaker opens and closes; the bulkhead refuses; 429s carry `Retry-After`; overload sheds low priority; fallbacks are flagged and harmless; deferred operations get reconciled; alerts fire; and **recovery** works, not just survival.
 
 **Example experiment plan** (a plan, not a run):
 
@@ -100,19 +102,17 @@ A ladder from cheap to realistic:
 | Stop condition | Stop if checkout success drops below 95% |
 | Evidence to look for | Rejections and fallbacks rise, breaker opens, no thread exhaustion |
 
-## 7. Common mistakes
+**Who guarantees what**
 
-1. **Testing only the happy path.**
-2. **Chaos without observability**, so you can't tell what happened.
-3. **No stop conditions.**
-4. **Starting in production** before staging is covered.
-5. **Testing failure but not recovery.**
-6. **Not fixing what you find**: a finding without an owner is just a story.
-
-## 8. In code
+| Layer | Responsible for |
+|---|---|
+| Test tooling | Injecting the fault as configured |
+| Platform | Stop conditions and safe scope (for example alarms that end an experiment) |
+| Team | Hypotheses, blast radius, fixing findings, repeating the experiment |
+| Tests themselves | Show only the scenarios you tried; passing says nothing about faults you didn't inject |
 
 > [!NOTE]
-> Untested sketch to show the shape. Check the WireMock API for your version.
+> Untested sketch to show the shape. The WireMock `withFixedDelay` call is described in WireMock's fault-simulation documentation; check the API for your version.
 
 ```java
 @Test
@@ -129,44 +129,81 @@ void slowInventoryReturnsFallbackFast() {
 }
 ```
 
-## 9. Remember
+## 6. Failure scenarios
 
+### Testing only the happy path
+
+- **What happened?** All tests passed; the first real outage exposed the fallback bug.
+- **Solutions:** a fault-injection test per resilience mechanism, in the build.
+
+### An experiment without stop conditions
+
+- **What happened?** A latency experiment in production kept running while checkout success fell.
+- **Solutions:** a small blast radius, staging first, and automatic stop conditions tied to the steady-state metric.
+
+### Failure tested, recovery not
+
+- **What happened?** The system survived the outage, then stayed degraded: the breaker never closed and a reconciler never ran.
+- **Solutions:** assert recovery explicitly: after removing the fault, steady state returns and pending operations settle.
+
+## 7. Architectural decisions
+
+| Benefit | Cost |
+|---|---|
+| Finds weaknesses before customers do | Time, tooling and a safe environment |
+| Builds team confidence and skill | Real damage if the blast radius isn't controlled |
+| Verifies alerts and runbooks too | Needs good observability first |
+
+Start with fault-injection tests in the pipeline and a game day in staging; move to automated experiments once monitoring is solid; require failure testing for critical paths before go-live. **Common mistakes:** chaos without observability; starting in production before staging is covered; not fixing what you find, because a finding without an owner is just a story.
+
+## 8. Check your understanding
+
+1. Why does a green test suite say little about resilience?
+2. What are the three things every experiment needs before it starts?
+3. After the fault is removed, what should you check besides "no errors"?
+4. Where would you start if the team has no chaos practice at all?
+
+Answers are at the end of this note.
+
+## 9. Revision
+
+**Remember**
 - **Untested resilience is an assumption.**
 - **Steady state → hypothesis → small blast radius → compare → fix.**
 - **Always have stop conditions.**
 - **Test recovery, not just failure.**
 - **Climb the ladder**: unit → integration → load → game day → chaos.
 
-## 10. Interview corner
+**Explain in 15 seconds:** "I test resilience by injecting failures on purpose: fault-injection tests first, then load tests, game days and chaos experiments with a small blast radius and stop conditions."
 
-**15-second answer:** "I test resilience by injecting failures on purpose: unit and integration fault tests first, then load tests, game days and chaos experiments with a small blast radius and stop conditions."
-
-**60-second answer:**
-> "Timeouts, retries, breakers and fallbacks only matter during failures, which normal tests rarely create, so I test them deliberately. Cheap tests come first: unit and integration tests that make a dependency slow or failing and assert the behaviour. Then load tests to find real limits, game days to practise alerts and runbooks, and chaos experiments: define a steady state, state a hypothesis, inject a real failure with a small blast radius and stop conditions, and compare. I test recovery as well, and make sure every finding gets fixed and the experiment repeated."
+**Explain in 60 seconds:**
+> "Timeouts, retries, breakers and fallbacks only matter during failures, which normal tests rarely create, so I test them deliberately. Cheap tests come first: unit and integration tests that make a dependency slow or failing and assert the behaviour. Then load tests to find real limits, game days to practise alerts and runbooks, and chaos experiments: define a steady state, state a hypothesis, inject a real failure with a small blast radius and stop conditions, and compare. I test recovery as well, and make sure every finding gets fixed and the experiment repeated. Passing tests only cover the faults I injected."
 
 **Likely follow-up questions:**
 - **What is a steady state?** A measurable sign of normal, like success rate or p99 latency, used to judge the experiment.
 - **How do you limit the risk of chaos experiments?** Small blast radius, staging first, and automatic stop conditions.
-- **Why test recovery?** Systems often survive the failure but don't return to normal afterwards.
-- **Where would you start with no chaos practice at all?** Fault-injection tests in the pipeline and a game day in staging.
 
-**Architect angle:** "I require failure testing before go-live for critical paths and schedule game days, because that's how we learn which resilience is real."
+**Architect's takeaway:** require failure testing before go-live for critical paths and schedule game days, because that's how the team learns which resilience is real.
 
-## 11. Industry check
+**Next topic:** this completes the resilience area. Revise with the [resilience cheat sheet](99-resilience-cheat-sheet.md), then continue with [messaging](../02-messaging/01-messaging-overview.md) (2.1).
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 by web search; principles mostly from secondary pages, tools from more authoritative ones. Re-verify when you revisit the note.
+> Checked 2026-10-21 by web search; principles mostly from secondary pages, tools from more authoritative ones. Re-verify when you revisit this note.
 
-- **Confirmed:** AWS Well-Architected recommends testing resiliency with chaos engineering. AWS Fault Injection Service runs experiments on AWS workloads with stop conditions tied to CloudWatch alarms, and can integrate with Chaos Mesh and LitmusChaos (open-source chaos tools for Kubernetes). Chaos Monkey is Netflix's original instance-termination tool.
-- **To verify:** the canonical wording at principlesofchaos.org; current APIs of WireMock, Toxiproxy and Testcontainers.
+- **Confirmed:** AWS Well-Architected recommends testing resiliency with chaos engineering; AWS Fault Injection Service runs experiments on AWS workloads with stop conditions tied to CloudWatch alarms and can integrate with Chaos Mesh and LitmusChaos; Chaos Monkey is Netflix's original instance-termination tool; WireMock's documentation describes a fixed delay (`withFixedDelay`, `fixedDelayMilliseconds`), random delay distributions and fault types such as connection reset.
+- **Assumptions and illustrations:** the ShopFlow story, the experiment plan and the code (not run).
+- **To verify:** the canonical wording at principlesofchaos.org; current APIs of Toxiproxy and Testcontainers.
 - **Decision rule:** fault-injection tests in the pipeline and game days in staging first; automated experiments once monitoring is solid; always a blast radius and stop conditions.
 
-## 12. Going further
+**Sources:** Principles of Chaos Engineering (principlesofchaos.org); AWS Well-Architected Framework, Reliability pillar; WireMock documentation, "Simulating faults"; Casey Rosenthal and Nora Jones, *Chaos Engineering*.
 
-- Principles of Chaos Engineering (principlesofchaos.org)
-- AWS Well-Architected Framework, Reliability pillar
-- Casey Rosenthal and Nora Jones, *Chaos Engineering*
+## Answers
 
-**This completes the resilience track.** Revise with the [resilience cheat sheet](99-resilience-cheat-sheet.md).
+1. Normal tests don't create slow or failing dependencies, so the timeouts, breakers and fallbacks are never exercised; green only covers the faults you tried.
+2. A defined steady state, a hypothesis, and a limited blast radius with stop conditions.
+3. That steady state actually returns: breakers close, queues drain, pending operations are reconciled and alerts clear.
+4. Fault-injection tests in the build pipeline, then a game day in staging with a small, prepared scenario.
 
-Back to [the index](../README.md) · [Roadmap](../roadmap.md).
+Back to [the resilience overview](01-resilience-overview.md) · [Index](../README.md) · [Roadmap](../roadmap.md).

@@ -1,11 +1,11 @@
 # Learning Progress Snapshot
 - Subject: Resilience patterns (track 1)
 - Goal: Understand and apply resilience patterns as an engineer and decide on them as an architect
-- Status: Done on 2026-10-21 (all ten notes written; Kafka paused meanwhile)
+- Status: Done on 2026-10-21 (all ten notes written, then migrated to the current note format and reviewed on 2026-10-21)
 - Completed: 1.1 overview, 1.2 timeouts, 1.3 retries/backoff/jitter, 1.4 idempotency, 1.5 circuit breaker, 1.6 bulkhead, 1.7 rate limiting, 1.8 load shedding and backpressure, 1.9 fallbacks and graceful degradation, 1.10 testing resilience, plus the cheat sheet
 - Strong areas: not assessed (no exercises attempted; the user prefers teaching without quizzes unless asked)
-- Gaps to revisit: 1.2 to 1.4 and 1.7 to 1.10 are notes only: no example app was built or run for them (circuit breaker and bulkhead have an example app in labs/). Their code samples are untested sketches
+- Gaps to revisit: 1.2 to 1.4, 1.7, 1.9 and 1.10 are notes only: their code samples are untested sketches (circuit breaker and bulkhead have an example app in labs/). 1.8 quotes two single runs of Tomcat limits on that app (macOS), described in the note; the 1.4 payment workflow is a design pattern, not tested against a real provider
 - Environment/setup: Java 21, Maven 3.9, Spring Boot 3.2.4, Resilience4j 2.2.0 (for the existing example app only)
 - Last exercise and result: none
 - Preference recorded 2026-10-21: no demo apps unless the user asks for hands-on practice
-- Next: revise from the cheat sheet; the Quick Q&A in each note is available whenever the user asks for a quiz
+- Next: revise from the cheat sheet; the "Check your understanding" questions in each note are available whenever the user asks for a quiz

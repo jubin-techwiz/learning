@@ -9,19 +9,47 @@ updated: "2026-10-21"
 # Rate Limiting and Throttling
 
 **Resilience · Step 1.7 · Fundamentals** · Last updated 2026-10-21
+**Prerequisites:** [Resilience patterns: the big picture](01-resilience-overview.md) (1.1); related: [Bulkhead](06-bulkhead.md) (1.6)
+
+## 1. The concept in simple English
+
+**What is it?** A rate limiter caps how many requests a caller may make in a period of time and turns away the rest, so no single caller can use everyone's capacity.
+
+**Why do we need it?** Capacity is shared. One buggy or greedy client can use it all, and well-behaved customers then time out through no fault of their own.
+
+**When would I meet it?** At API gateways and public APIs, on login endpoints, and in front of any paid or fragile third-party service you call.
 
 > [!TIP]
-> **In one sentence:** a rate limiter caps how many requests a caller may make in a period of time and turns away the rest, so no single caller can take everyone's capacity.
->
-> **Memory hook:** a **nightclub bouncer with a clicker**: only so many people per minute, everyone else waits outside. Or a **ticket dispenser** that refills at a steady pace: take a ticket to enter; no tickets, no entry.
+> **Memory hook:** a nightclub bouncer with a clicker: only so many people per minute, everyone else waits outside.
 
-## Where it fits
+## 2. Mental model: a bouncer and a ticket dispenser
 
-Step 1.7 of the [resilience track](01-resilience-overview.md). The earlier patterns protect you *from your dependencies*; rate limiting protects you *from your callers* (and protects fragile dependencies from you). It is related to the [bulkhead](06-bulkhead.md) (calls at the same time) and leads to [load shedding](08-load-shedding-backpressure.md) (1.8).
+| In the analogy | In the real system |
+|---|---|
+| The bouncer's per-minute limit | The **rate limit** |
+| A ticket dispenser that refills steadily | A **token bucket** |
+| A full pocket of tickets | A permitted **burst** |
+| "Come back in five minutes" | **429** with **`Retry-After`** |
 
-## 1. The story
+**Where the analogy breaks:** a bouncer counts people at one door. With several service instances, each may count on its own, so a "100 per second" limit can quietly become 400 unless the counter is shared.
 
-A partner integrates with ShopFlow's public product API. Their code has a bug and calls the search endpoint in a tight loop, thousands of times per second. ShopFlow's search capacity is used up, and real customers' searches time out, even though they did nothing wrong.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Rate limit / quota** | Maximum requests allowed per time window | The policy | 100 per second | Plan |
+| **Rate limiting** | Rejecting requests above the limit | Protects you from callers | 429 responses | Throttling |
+| **Throttling** | Slowing requests down (often used loosely for both) | Avoid confusing it with rejecting | Delay instead of reject | Backpressure ([1.8](08-load-shedding-backpressure.md)) |
+| **Token bucket** | Tokens refill steadily; each request takes one; bursts allowed | The most common algorithm | 10/s, bucket 100 | Leaky bucket |
+| **429 Too Many Requests** | The standard "slow down" response | Tells clients it is a limit, not an outage | HTTP 429 | `Retry-After` |
+| **`Retry-After`** | Header saying how long to wait | Stops immediate retries | `Retry-After: 30` | Backoff ([1.3](03-retries-backoff-jitter.md)) |
+| **Noisy neighbour** | One tenant using everyone's capacity | The problem limits solve | Heavy export job | Bulkhead |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** ShopFlow's public product API must stay responsive for all partners, even when one partner's code misbehaves.
+
+A partner has a bug and calls the search endpoint in a tight loop, thousands of times per second. Search capacity is used up and real customers' searches time out, though they did nothing wrong.
 
 ```mermaid
 flowchart LR
@@ -30,11 +58,13 @@ flowchart LR
     S --> X[Capacity used up: customers time out]
 ```
 
-## 2. The idea
+**How rate limiting helps.** Counting requests per partner means the buggy partner receives 429 responses while everyone else keeps their share.
 
-Count requests **per caller** over time, and refuse those above the limit with **HTTP 429 Too Many Requests**, ideally with a **`Retry-After`** header saying when to come back. The buggy partner gets 429s; everyone else keeps their share.
+**What it costs.** Limits to choose and explain to customers, a shared counter if the limit must be exact, and legitimate bursts that may be refused.
 
-The most common algorithm is the **token bucket**: a bucket fills with tokens at a steady rate up to a maximum, and each request takes one. A full bucket allows a short burst; after that, the steady rate applies.
+**Elsewhere:** login pages use a tight limit per account and per address to slow password guessing; an outgoing limiter keeps your calls under a third party's quota.
+
+## 5. How it works
 
 ```mermaid
 flowchart LR
@@ -45,25 +75,11 @@ flowchart LR
     C -->|no| X[429 Too Many Requests + Retry-After]
 ```
 
-## 3. Key terms
-
-| Term | Plain meaning |
-|---|---|
-| **Rate limit / quota** | Maximum requests allowed per time window |
-| **Rate limiting** | Rejecting requests above the limit |
-| **Throttling** | Slowing requests down (often used loosely for both) |
-| **Token bucket** | Tokens refill steadily; each request takes one; allows bursts |
-| **Fixed / sliding window** | Count per clock window / over the last N seconds |
-| **429 Too Many Requests** | The standard "slow down" response |
-| **Noisy neighbour** | One tenant or client using everyone's capacity |
-
-## 4. How it works, step by step
-
-1. Identify the caller: API key, user, tenant, IP or service.
+1. Identify the caller: API key, user, tenant, address or service.
 2. Find their policy, for example 100 requests per second with bursts of 200.
-3. Take a token (or increase the counter). If none is left, reject with 429 and `Retry-After`.
-4. The client backs off and retries later, with jitter.
-5. With several service instances, either each counts on its own (cheap, looser) or they share a counter, for example in Redis (exact, but adds a dependency).
+3. Take a token. If none is left, reject with 429 and, ideally, `Retry-After`.
+4. The client backs off and retries later, with jitter ([1.3](03-retries-backoff-jitter.md)).
+5. With several instances, either each counts on its own (cheap, looser) or they share a counter, for example in Redis (exact, but a new dependency).
 
 | Algorithm | Behaviour |
 |---|---|
@@ -72,40 +88,19 @@ flowchart LR
 | **Token bucket** | Bursts up to the bucket size, then a steady rate; the most common |
 | Leaky bucket | Smooths traffic into a constant flow |
 
-## 5. Real-world examples
+**Where to enforce it:** at the API gateway (one policy per client or plan), inside services (per endpoint or tenant), and on outgoing calls (staying under a dependency's limits).
 
-- **Public APIs (maps, weather, social media):** limits per API key and per plan; exceeding them returns 429, and paid plans get higher limits.
-- **Login pages:** a tight limit per account and per IP slows down password-guessing attacks.
-- **Calling a paid or fragile third party:** an outgoing limiter keeps your app under the provider's quota, so you don't get blocked or billed for overage.
+**Who guarantees what**
 
-## 6. Design choices and trade-offs
-
-| Where | Good for |
+| Layer | Responsible for |
 |---|---|
-| **API gateway / edge** | One policy per client or plan, protecting everything behind it |
-| **Inside the service** | Per-endpoint or per-tenant limits the gateway can't see |
-| **On outgoing calls** | Staying under a dependency's own limits |
-
-| | Rate limiter | Bulkhead | Circuit breaker |
-|---|---|---|---|
-| Limits | Calls **per time** | Calls **at the same time** | Calls after **observed failures** |
-| Based on | A fixed policy | A fixed number | Recent results |
-
-**Per-instance versus shared:** 4 instances with a local limit of 100 each allow 400 in total. A shared counter is exact, but you must decide what happens if the counter store fails (allow traffic, or block it).
-
-## 7. Common mistakes
-
-1. **One global limit**, so one client can use everyone's share.
-2. **No `Retry-After`**, so clients retry at once and add load.
-3. **Per-instance limits when a global one was intended.**
-4. **The same limit for cheap and expensive endpoints**: search and exports need stricter limits.
-5. **Rate-limiting health checks**, causing restarts.
-6. **Limits nobody tunes**, blocking real users or letting abuse through.
-
-## 8. In code
+| Gateway or library | Counting and rejecting over-limit requests (for example Spring Cloud Gateway's Redis rate limiter, a token bucket that returns 429 by default) |
+| Shared counter store (Redis) | Making the limit exact across instances, and its own availability |
+| Application / product | The limits per client or plan, and what happens if the counter store fails |
+| Client | Honouring `Retry-After` and backing off |
 
 > [!NOTE]
-> Untested sketch to show the shape. Check names and defaults for your versions.
+> Untested sketch to show the shape. Resilience4j's documented defaults are `limitForPeriod` 50, `limitRefreshPeriod` 500 ns and `timeoutDuration` 5 s (the page states no version): the default `timeoutDuration` makes an over-limit call **wait up to 5 seconds for a permit** rather than be rejected, so set it to `0` to reject at once.
 
 ```yaml
 resilience4j:
@@ -114,7 +109,7 @@ resilience4j:
       search:
         limitForPeriod: 100      # calls allowed per period
         limitRefreshPeriod: 1s
-        timeoutDuration: 0       # don't wait for a permit: reject at once
+        timeoutDuration: 0       # reject at once instead of waiting for a permit
 ```
 
 ```java
@@ -122,52 +117,87 @@ resilience4j:
 public List<Product> search(String query) { ... }
 ```
 
-| Setting | What it controls |
-|---|---|
-| Limit per period | How many calls are allowed |
-| Refresh period | How often the allowance resets |
-| Wait for permit | Whether extra calls wait or are rejected |
+At a gateway this is usually configuration. For example, Spring Cloud Gateway's `RequestRateLimiter` filter with the Redis implementation takes `replenishRate` (tokens per second) and `burstCapacity` (bucket size), returns 429 by default when denied, and denies requests whose key cannot be resolved unless configured otherwise.
 
-At a gateway this is usually configuration; for example, Spring Cloud Gateway offers a Redis-backed request rate limiter.
+## 6. Failure scenarios
 
-## 9. Remember
+### One global limit
 
+- **What happened?** All callers shared one limit and one heavy caller exhausted it.
+- **Solutions:** a limit per client, plan or tenant, stricter for expensive endpoints.
+
+### A limit that waits instead of rejecting
+
+- **What happened?** The limiter's default waits for a permit for seconds, so rejected callers still held threads.
+- **Solutions:** set the wait to zero on request threads and return 429.
+
+### Per-instance limits when a global one was intended
+
+- **What happened?** Four instances each allowed 100 per second, so the real limit was 400.
+- **Solutions:** a shared counter, or per-instance limits sized as total ÷ instances, accepting looseness; decide what happens if the counter store fails (allow or block).
+
+### Rejected clients retry at once
+
+- **Why?** No `Retry-After`, no backoff.
+- **Solutions:** send `Retry-After`; clients honour it and add jitter.
+
+## 7. Architectural decisions
+
+| | Rate limiter | Bulkhead | Circuit breaker |
+|---|---|---|---|
+| Limits | Calls **per time** | Calls **at the same time** | Calls after **observed failures** |
+| Based on | A fixed policy | A fixed number | Recent results |
+| Protects | You, from callers | You, from slow dependencies | You, from broken dependencies |
+
+**Rate limiting versus load shedding:** a limit is a fixed policy per caller; shedding ([1.8](08-load-shedding-backpressure.md)) reacts to how overloaded you are right now. Limits are also a product decision: they define what each plan is promised. **Common mistakes:** the same limit for cheap and expensive endpoints; rate-limiting health checks; limits nobody tunes.
+
+## 8. Check your understanding
+
+1. Four instances each allow 100 requests per second locally. What limit does a caller effectively get, and how would you make it exact?
+2. What does `Retry-After` achieve that a bare 429 does not?
+3. A limiter with default settings is "rejecting" over-limit calls, but threads are still piling up. What setting would you check?
+4. How is a rate limiter different from load shedding?
+
+Answers are at the end of this note.
+
+## 9. Revision
+
+**Remember**
 - **Rate limiting protects you from your callers.**
 - **Token bucket = bursts, then a steady rate.**
-- **Reject with 429 + `Retry-After`**, and clients back off with jitter.
-- **Limits per client, plan or tenant**, stricter for expensive endpoints.
-- **Per-instance limits add up**; share the counter if a global limit matters.
+- **Reject with 429 + `Retry-After`**; clients back off with jitter.
+- **Limits per client, plan or tenant**; per-instance limits add up.
 
-## 10. Interview corner
+**Explain in 15 seconds:** "A rate limiter caps requests per caller per time, usually with a token bucket, and rejects the excess with 429 and Retry-After."
 
-**15-second answer:** "A rate limiter caps requests per caller per time, usually with a token bucket, and rejects the excess with 429 and Retry-After."
-
-**60-second answer:**
-> "A rate limiter makes sure no single caller can take everyone's capacity. I usually use a token bucket, because it allows short bursts and then a steady rate. I enforce limits at the gateway per client or plan, add finer limits in services for expensive endpoints or tenants, and use a shared counter when an exact global limit matters. Rejected calls get 429 with Retry-After, and clients back off with jitter. Rate limiting protects me from callers; bulkheads and circuit breakers protect me from dependencies."
+**Explain in 60 seconds:**
+> "A rate limiter makes sure no single caller can take everyone's capacity. I usually use a token bucket, because it allows short bursts and then a steady rate. I enforce limits at the gateway per client or plan, add finer limits in services for expensive endpoints or tenants, and use a shared counter when an exact global limit matters, deciding what happens if that counter fails. Rejected calls get 429 with Retry-After, and clients back off with jitter. Rate limiting protects me from callers; bulkheads and circuit breakers protect me from dependencies, and load shedding reacts to current overload."
 
 **Likely follow-up questions:**
-- **Token bucket versus fixed window?** Fixed window allows double bursts at the boundary; token bucket allows controlled bursts and a steady rate.
-- **How do you rate-limit across 10 instances?** A shared counter (for example Redis), or local limits sized as total divided by instances, accepting some looseness.
-- **Rate limiter versus bulkhead?** Per time versus at the same time.
-- **What should clients do on 429?** Wait as `Retry-After` says, then retry with backoff and jitter.
+- **Token bucket versus fixed window?** A fixed window allows double bursts at the boundary; a token bucket allows controlled bursts and a steady rate.
+- **How do you rate-limit across 10 instances?** A shared counter, or local limits of total ÷ instances, accepting looseness.
 
-**Architect angle:** "Limits are a product decision too: they define what each customer plan is promised, so they're documented, monitored and tuned."
+**Architect's takeaway:** limits are a product decision as well as a technical one, so document them, monitor them and tune them.
 
-## 11. Industry check
+**Next topic:** [Load shedding and backpressure](08-load-shedding-backpressure.md) (1.8)
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 by web search; mostly IETF drafts and blogs. Re-verify when you revisit the note.
+> Checked 2026-10-21. Re-verify when you revisit this note.
 
-- **Confirmed:** 429 Too Many Requests with `Retry-After` is the standard way to tell clients to slow down. IETF drafts propose standard `RateLimit` header fields (limit, remaining, reset); the newest draft in my results was from 2022.
-- **To verify:** the current status of the `RateLimit` header drafts; Resilience4j `RateLimiter` defaults (one source reported 50 permits and a 5-second wait); your gateway's rate-limiter options.
-- **Decision rule:** limit at the edge per client or plan, add finer limits in services, share counters when a global limit matters, always answer 429 with `Retry-After`.
+- **Confirmed:** Resilience4j's rate limiter documentation lists defaults `limitForPeriod` 50, `limitRefreshPeriod` 500 ns, `timeoutDuration` 5 s (no version stated on the page); the Spring Cloud Gateway documentation says `RequestRateLimiter` returns HTTP 429 by default when a request is denied, that the Redis implementation uses the token bucket algorithm with `replenishRate`, `burstCapacity` and `requestedTokens`, and that requests whose key cannot be resolved are denied by default. 429 with `Retry-After` is the standard way to tell clients to slow down (earlier check, standards and vendor guidance).
+- **Assumptions and illustrations:** the ShopFlow story, example limits and the sketch (not run).
+- **To verify:** the status of the IETF `RateLimit` header drafts; your gateway's rate-limiter options and defaults.
+- **Decision rule:** limit at the edge per client or plan, add finer limits in services, share counters when a global limit matters, answer 429 with `Retry-After`.
 
-## 12. Going further
+**Sources:** Resilience4j documentation (RateLimiter); Spring Cloud Gateway reference, "RequestRateLimiter GatewayFilter Factory"; your API gateway's rate-limiting documentation.
 
-- IETF drafts on RateLimit header fields (check status)
-- Your API gateway's rate-limiting documentation
-- Resilience4j documentation (RateLimiter)
+## Answers
 
-**Next:** [Load shedding and backpressure](08-load-shedding-backpressure.md) (1.8).
+1. Up to 400 per second in total (each instance allows 100). Use a shared counter such as Redis, or size local limits as the total divided by instances and accept the looseness.
+2. It tells well-behaved clients when to come back, so they don't retry immediately and add load.
+3. The permit wait (`timeoutDuration`): the documented default of 5 seconds makes callers wait for a permit rather than be rejected; set it to 0.
+4. A rate limiter applies a fixed per-caller policy; load shedding reacts to how overloaded the service currently is.
 
-Back to [the index](../README.md) · [Roadmap](../roadmap.md).
+Back to [the resilience overview](01-resilience-overview.md) · [Index](../README.md) · [Roadmap](../roadmap.md).

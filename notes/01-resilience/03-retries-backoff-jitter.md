@@ -99,7 +99,7 @@ sequenceDiagram
 | 429, after `Retry-After` | Anything not safe to repeat |
 
 > [!NOTE]
-> Untested sketch to show the shape. Check the property names for your Resilience4j version, especially whether exponential backoff and randomised wait can be enabled together.
+> Untested sketch to show the shape. Property names are those of Resilience4j 2.2.0's Spring Boot configuration; check your version.
 
 ```yaml
 resilience4j:
@@ -193,7 +193,8 @@ Answers are at the end of this note.
 
 - **Confirmed:** Amazon's Builders' Library and the AWS Architecture Blog recommend capped exponential backoff with jitter and limited attempts, and warn about retry amplification across layers; most AWS SDKs include backoff and jitter. AWS Well-Architected says to control and limit retries and to retry only idempotent operations. Resilience4j's retry properties include `enableExponentialBackoff`, `enableRandomizedWait` and `randomizedWaitFactor` (tutorials and guides).
 - **Assumptions and illustrations:** the ShopFlow story; the configuration (not run); the multiplication figures are arithmetic.
-- **To verify:** whether your Resilience4j version allows exponential backoff and randomised wait together, and how it combines them; Spring Retry's `@Backoff` options.
+- **Confirmed (Resilience4j 2.2.0 source, `CommonRetryConfigurationProperties`):** enabling both `enableExponentialBackoff` and `enableRandomizedWait` is valid and selects `IntervalFunction.ofExponentialRandomBackoff`; `randomizedWaitFactor` must be in [0, 1); `exponentialMaxWaitDuration` is only applied when `randomizedWaitFactor` is also set in the combined mode. Resilience4j's retry documentation lists defaults of 3 attempts (including the first call) and a constant 500 ms wait.
+- **To verify:** behaviour of other Resilience4j versions; Spring Retry's `@Backoff` options.
 - **Decision rule:** transient errors, idempotent operations, one layer, few attempts, backoff with jitter, inside the deadline, behind a breaker.
 
 **Sources:** Amazon Builders' Library, "Timeouts, retries and backoff with jitter"; AWS Architecture Blog, "Exponential Backoff and Jitter"; AWS Well-Architected Framework, Reliability pillar; Resilience4j documentation.

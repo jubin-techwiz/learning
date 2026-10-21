@@ -29,7 +29,7 @@ You can have several areas open at once. When you switch, the area you leave is 
 
 | Area | Status | Done | Resume at | Notes |
 |---|---|---|---|---|
-| 1 Resilience | Done | 1.1 to 1.10 | none | All ten notes are written. Revise from the cheat sheet. Hands-on demo only if you ask |
+| 1 Resilience | Done | 1.1 to 1.10 | none | All ten notes follow the current note format (migrated and reviewed 2026-10-21). Revise from the cheat sheet. Hands-on demo only if you ask |
 | 2 Messaging, Kafka | Done | 2.1, 2.2.1 to 2.2.18 (Kafka series complete) | Next in this area: RabbitMQ series (2.3) | Resumed on 2026-10-21 after the resilience notes were finished. Kafka error handling and the idempotent producer (2.2.8, 2.2.9) have their resilience prerequisites in place |
 
 ## Do next
@@ -61,7 +61,7 @@ Why: every service you build calls something that will eventually fail. These pa
 | 1.99 | [Resilience cheat sheet (revision)](01-resilience/99-resilience-cheat-sheet.md) | Both | Done |
 
 > [!NOTE]
-> The whole track is written. Steps 1.5 and 1.6 were written before 1.2 to 1.4, so for the cleanest understanding read the notes in numbered order. The notes are self-contained; hands-on demos are optional and kept outside these notes. Notes 1.1 to 1.3 use the current note format; 1.4 to 1.10 are being migrated.
+> The whole track is written. Steps 1.5 and 1.6 were written before 1.2 to 1.4, so for the cleanest understanding read the notes in numbered order. The notes are self-contained; hands-on demos are optional and kept outside these notes. All ten notes and the cheat sheet use the current note format. Code samples are untested sketches unless a note says it was run; the results quoted in 1.5, 1.6 and 1.8 come from example runs described in those notes.
 
 ### 2. Messaging and event-driven design
 Why: events decouple teams and services, but they bring ordering, duplicate and consistency problems.

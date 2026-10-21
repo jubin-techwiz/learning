@@ -1,6 +1,6 @@
 ---
 title: Circuit Breaker
-tags: [resilience, circuit-breaker, resilience4j, spring-boot, fundamentals]
+tags: [resilience, circuit-breaker, fail-fast, resilience4j, spring-boot, fundamentals]
 category: resilience
 level: fundamentals
 updated: "2026-10-21"
@@ -9,19 +9,48 @@ updated: "2026-10-21"
 # Circuit Breaker
 
 **Resilience · Step 1.5 · Fundamentals** · Last updated 2026-10-21
+**Prerequisites:** [Timeouts](02-timeouts.md) (1.2), [Retries, backoff and jitter](03-retries-backoff-jitter.md) (1.3)
+
+## 1. The concept in simple English
+
+**What is it?** A circuit breaker watches recent calls to a dependency. When too many fail or run slow, it **opens**: calls are refused at once, without touching the dependency, and a fallback answers instead. After a while it lets a few test calls through and closes again if they succeed.
+
+**Why do we need it?** Calling a dependency that is clearly broken wastes your threads and the caller's time, and adds load to something that is already struggling. Timeouts bound each wait; a breaker stops making the waits at all.
+
+**When would I meet it?** Around calls to an external provider or another service that can fail for minutes at a time, in every library and mesh that offers "resilience" features.
 
 > [!TIP]
-> **In one sentence:** a circuit breaker watches calls to a dependency, and when too many fail or run slow, it stops calling it for a while and answers at once with a fallback, then tests carefully before trusting it again.
->
-> **Memory hook:** the **fuse box in your house**. A fault trips it so the wiring doesn't burn. You don't keep flipping it back on while the toaster is still shorted; you wait, then test it once.
+> **Memory hook:** the fuse box in your house. A fault trips it so the wiring doesn't burn. You don't keep flipping it back on while the toaster is still shorted; you wait, then test it once.
 
-## Where it fits
+## 2. Mental model: a fuse box
 
-Step 1.5 of the [resilience track](01-resilience-overview.md). It builds on [timeouts](02-timeouts.md), [retries](03-retries-backoff-jitter.md) and [idempotency](04-idempotency.md): it is what stops retries once a dependency is clearly broken. It is an **independent** pattern and a sibling of the [bulkhead](06-bulkhead.md) (1.6): the bulkhead limits how many calls run at once, the breaker stops calls after enough failures.
+| In the analogy | In the real system |
+|---|---|
+| The fuse | The **circuit breaker** around one dependency |
+| A short circuit | A run of failures or slow calls |
+| The fuse tripping | **Open** state: calls rejected immediately |
+| Flipping it back to test | **Half-open** state: a few trial calls |
+| Power restored | **Closed** state: normal calls |
 
-## 1. The story
+**Where the analogy breaks:** a fuse trips on one fault and is reset by a person. A software breaker judges a *rate* over recent calls, resets itself, and can open for the wrong reason (for example, counting business errors as failures) if misconfigured.
 
-ShopFlow's external payment provider starts failing. `payment-service` keeps calling it: every checkout waits for a timeout, then retries, then waits again. Customers stare at spinners for 10 seconds before seeing an error, threads pile up, and the provider, already struggling, gets even more traffic from the retries.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Closed / open / half-open** | Normal / refusing calls / testing with a few calls | The three states | Open for 10 s | State machine |
+| **Sliding window** | The recent calls the breaker judges | Defines "recent" | Last 10 calls | Minimum number of calls |
+| **Failure-rate threshold** | Share of failures that opens the breaker | The main trip condition | 50% | Slow-call threshold |
+| **Slow-call threshold** | Calls slower than this count as "slow" | Catches the dangerous case where nothing fails but everything is slow | Over 1 s | Timeout ([1.2](02-timeouts.md)) |
+| **Minimum number of calls** | Don't judge until this many are recorded | One failure out of one call isn't "100% failing" | 5 | Window |
+| **Fallback** | The answer given when a call is rejected or fails | What users see while open | "Payment pending" | Graceful degradation ([1.9](09-fallbacks-graceful-degradation.md)) |
+| **Stability patterns** | Michael Nygard's family name (*Release It!*) | Interview vocabulary | Circuit breaker, bulkhead | Reliability patterns |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** Checkout must stay usable when the external payment provider has a bad hour, without hammering the provider or leaving customers staring at a spinner.
+
+The provider starts failing. The Payment Service keeps calling it: every checkout waits for a timeout, then retries, then waits again. Customers see a spinner for 10 seconds before an error, threads pile up, and the already struggling provider receives even more traffic from the retries.
 
 ```mermaid
 flowchart LR
@@ -31,78 +60,44 @@ flowchart LR
     P --> T[Threads pile up, users wait 10 s]
 ```
 
-## 2. The idea
+**How the breaker helps.** After enough failures it opens. Rejections take about a millisecond, threads stay free, the provider gets room to recover, and the customer sees "payment pending, we'll confirm shortly" instead of waiting.
 
-Give the caller **memory**. A breaker keeps a short record of recent calls. When the failure rate (or slow-call rate) crosses a threshold, it **opens**: calls are rejected immediately, in about a millisecond, without touching the provider. This protects your threads *and* gives the provider room to recover. After a wait, it lets a few **test calls** through. If they succeed, it closes again.
+**What it costs.** Thresholds to tune, a fallback to design with the business, and an alert for "breaker open" (a polite fallback can hide an outage for hours).
+
+**Elsewhere:** a travel site keeps one breaker per airline API, so one airline's outage doesn't spoil searches for the others.
+
+## 5. How it works
 
 ```mermaid
 stateDiagram-v2
     [*] --> Closed
     Closed --> Open: failure or slow-call rate too high
     Open --> HalfOpen: wait time ends
-    HalfOpen --> Closed: test calls succeed
-    HalfOpen --> Open: test calls fail
+    HalfOpen --> Closed: trial calls succeed
+    HalfOpen --> Open: trial calls fail
     state "Half-open" as HalfOpen
 ```
-
-While open, the caller gets a **fallback**: in ShopFlow, "payment pending, we'll confirm shortly", never a fake success.
-
-## 3. Key terms
-
-| Term | Plain meaning |
-|---|---|
-| **Closed** | Normal: calls flow, results are counted |
-| **Open** | Calls rejected instantly; the dependency gets nothing |
-| **Half-open** | A few test calls decide whether to close or reopen |
-| **Sliding window** | The recent calls the breaker judges (for example the last 10) |
-| **Failure-rate threshold** | The share of failures that opens the breaker |
-| **Slow-call threshold** | Calls slower than this count as "slow" |
-| **Minimum number of calls** | Don't judge until this many calls are recorded |
-| **Fallback** | The answer given when the call is rejected or fails |
-
-## 4. How it works, step by step
 
 1. **Closed:** each call's result goes into the sliding window.
 2. Once the minimum number of calls is reached, the breaker checks the failure rate and the slow-call rate.
 3. If either crosses its threshold, it goes **open**.
 4. While open, every call is rejected at once and the fallback answers.
-5. After the wait time, it goes **half-open** and lets a small number of test calls through.
-6. Test calls succeed: **closed**. They fail: **open** again.
+5. After the wait time it goes **half-open** and lets a small number of trial calls through.
+6. Trial calls succeed: **closed**. They fail: **open** again.
 
-**What counts as a failure:** timeouts, 5xx errors, connection errors. **Not** business answers: a declined card (HTTP 402) is a correct response and must be ignored, or a run of declines would block every customer.
+**What counts as a failure:** timeouts, 5xx errors, connection errors. Not business answers: a declined card (HTTP 402) is a correct response and must be ignored, or a run of declines would block every customer. A breaker needs a **timeout** underneath it; calls that never finish can't be counted.
 
-## 5. Real-world examples
+**Who guarantees what**
 
-- **Travel booking sites:** when one airline's API goes down, a breaker per airline stops calls to it, and searches show the other airlines' results instead of timing out.
-- **Banking apps:** a breaker around a credit-score provider opens during its outage, and loan applications are queued for later review instead of failing.
-- **Video streaming:** a breaker around the personalisation service opens under errors, and the home page shows a cached generic row.
-
-## 6. Design choices and trade-offs
-
-| Choice | Guidance |
+| Layer | Responsible for |
 |---|---|
-| **Scope** | One breaker **per dependency**, not one for the whole app |
-| **Thresholds** | Tune from real traffic; too sensitive flaps, too lax reacts late |
-| **Fallback** | A business decision: give less, never something false |
-| **Library or service mesh** | Library when the fallback needs business logic; a mesh (Envoy, Istio) for a uniform baseline with no code; many teams use both |
-| **Several instances** | Each pod has its own breaker; they won't all open together, which is usually fine |
-
-**Breaker versus bulkhead:** the breaker reacts to *recent results*; the bulkhead limits *concurrent calls* from the first second. Use both.
-
-## 7. Common mistakes
-
-1. **No timeout**, so the breaker can't count calls that never finish.
-2. **Counting business errors** (declined cards) as failures.
-3. **A fallback that pretends success.**
-4. **One shared breaker** for every dependency.
-5. **Never tuning thresholds**, so it flaps open and closed.
-6. **Calling the annotated method from the same class**: the annotation works through a proxy, so a self-call skips the breaker.
-7. **Too many half-open test calls**, knocking over a service that has only just recovered.
-
-## 8. In code
+| Library (Resilience4j) or mesh | Counting, state changes, rejecting calls while open |
+| Application | Which exceptions count, the fallback's content, alerting on open breakers |
+| The dependency | Recovering; the breaker only gives it room |
+| Neither | Making the fallback honest: that is a business decision |
 
 > [!NOTE]
-> This configuration was run and checked with automated tests on Java 17, Spring Boot 3.2.4 and Resilience4j 2.2.0. The results below come from that run.
+> The configuration below was run and checked with automated tests on Spring Boot 3.2.4 and Resilience4j 2.2.0 (the lab's tests and demo scripts also ran on Java 21.0.8 on 2026-10-21). The results come from those runs.
 
 ```java
 @CircuitBreaker(name = "payment", fallbackMethod = "pendingPayment")
@@ -126,57 +121,103 @@ resilience4j.circuitbreaker.instances.payment:
   ignoreExceptions: [com.example.PaymentDeclinedException]
 ```
 
-**What the example run showed:**
+**What the example runs showed:**
 
 | Situation | Result |
 |---|---|
 | 3 healthy then 3 failing calls | Opened at 3 failures out of 6 (50%): earlier successes count in the window |
 | Calls while open | About 1 ms each; the dependency received none |
-| After 10 s | Half-open on its own; 3 healthy test calls closed it |
-| Declined cards (402) | Stayed closed; declines weren't even recorded |
-| 2-second calls, no errors | Opened after 5 calls on the slow-call rate (100%) |
+| After 10 s | Half-open on its own; 3 healthy trial calls closed it |
+| Declined cards (402) | Stayed closed; declines weren't recorded as failures |
+| 2-second calls, no errors | Opened on the slow-call rate (100%) after 5 calls |
 
-The fallback method receives every exception, including ignored ones, which is why it rethrows the declined-card error. Spring Boot Actuator shows state at `/actuator/circuitbreakers` and every transition at `/actuator/circuitbreakerevents`.
+The fallback method receives every exception, including ignored ones, which is why it rethrows the declined-card error. Spring Boot Actuator shows state at `/actuator/circuitbreakers` and transitions at `/actuator/circuitbreakerevents`.
 
-## 9. Remember
+## 6. Failure scenarios
 
+### Business errors trip the breaker
+
+- **What happened?** A run of declined cards opened the breaker and blocked every customer.
+- **Why?** A decline is a valid answer, but was counted as a failure.
+- **Solutions:** ignore business exceptions in the breaker; rethrow them in the fallback.
+
+### The fallback hides an outage
+
+- **What happened?** The breaker stayed open for hours; users saw "payment pending" and nobody noticed.
+- **Solutions:** alert when a breaker stays open; track and reconcile deferred payments ([1.4](04-idempotency.md)).
+
+### The breaker never sees slow calls
+
+- **What happened?** The provider answered in 8 seconds for 20 minutes, but the breaker watched only errors.
+- **Solutions:** set the slow-call threshold and a timeout.
+
+### Self-invocation skips the breaker
+
+- **What happened?** An annotated method was called from the same class and the breaker did nothing.
+- **Why?** The annotation works through a proxy; a self-call bypasses it.
+- **Solutions:** call it through another bean, or use the programmatic API.
+
+## 7. Architectural decisions
+
+| Choice | Guidance |
+|---|---|
+| **Scope** | One breaker **per dependency**, not one for the whole application |
+| **Thresholds** | Tune from real traffic; too sensitive flaps, too lax reacts late |
+| **Fallback** | A business decision: give less, never something false |
+| **Library or mesh** | Library when the fallback needs business logic; a mesh (Envoy, Istio) for a uniform baseline with no code; many teams use both, taking care retries and breakers aren't duplicated |
+| **Several instances** | Each instance has its own breaker; they won't all open together, which is usually fine |
+
+**Breaker versus bulkhead:** the breaker reacts to *recent results*; the bulkhead ([1.6](06-bulkhead.md)) limits *concurrent calls* from the first second. They are siblings; use both where threads could be exhausted. **Common mistakes:** no timeout underneath; one shared breaker; never tuning thresholds; too many half-open trial calls knocking over a service that just recovered.
+
+## 8. Check your understanding
+
+1. A breaker that only counts errors: does it protect you from a dependency that answers every call in 9 seconds?
+2. Why must a declined card be ignored by the breaker?
+3. The breaker is open and the fallback says "payment pending". What must you still do about those payments?
+4. What does the minimum number of calls prevent?
+
+Answers are at the end of this note.
+
+## 9. Revision
+
+**Remember**
 - **Closed → open → half-open → closed.**
-- **Slow calls count too**: a breaker that only watches errors misses the dangerous case.
+- **Slow calls count too**, so you need the slow-call threshold and a timeout.
 - **Ignore business errors.**
 - **A fallback may give less, never something false.**
-- **Alert when a breaker stays open**: a polite fallback can hide an outage for hours.
+- **Alert when a breaker stays open.**
 
-## 10. Interview corner
+**Explain in 15 seconds:** "A circuit breaker stops calling a dependency after too many failures or slow calls, answers with a fallback, and sends a few trial calls later before trusting it again."
 
-**15-second answer:** "A circuit breaker stops calling a dependency after too many failures or slow calls, answers with a fallback, and sends a few test calls later before trusting it again."
-
-**60-second answer:**
-> "A circuit breaker watches recent calls to a dependency. When the failure or slow-call rate crosses a threshold, it opens and rejects calls immediately, which protects my threads and gives the dependency room to recover. After a wait it goes half-open, lets a few test calls through, and closes if they succeed. I use one breaker per dependency, behind timeouts and limited retries, ignore business errors like declined cards, return an honest fallback, and alert when a breaker stays open."
+**Explain in 60 seconds:**
+> "A circuit breaker watches recent calls to a dependency. When the failure or slow-call rate crosses a threshold, it opens and rejects calls immediately, which protects my threads and gives the dependency room to recover. After a wait it goes half-open, lets a few trial calls through, and closes if they succeed. I use one breaker per dependency, under a timeout and limited retries, ignore business errors like declined cards, return an honest fallback, and alert when a breaker stays open. It doesn't make the dependency healthy; it limits the damage while it isn't."
 
 **Likely follow-up questions:**
-- **Would an error-only breaker protect against a slow service?** No. Slow calls don't fail, so you need the slow-call threshold, and a timeout.
-- **What happens when the dependency recovers?** Nothing until the wait ends; then half-open test calls decide.
+- **What happens when the dependency recovers?** Nothing until the wait ends; then the half-open trial calls decide.
 - **Why a minimum number of calls?** So one failure out of one call doesn't look like "100% failing".
 - **Library or service mesh?** Library when the fallback needs business logic; a mesh for a no-code baseline; often both.
 
-**Architect angle:** "The fallback is a product decision I agree with the business, and an open breaker is an alert, not a silent success."
+**Architect's takeaway:** the fallback is a product decision agreed with the business, and an open breaker is an alert, not a silent success.
 
-## 11. Industry check
+**Next topic:** [Bulkhead](06-bulkhead.md) (1.6)
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-20 by web search; mostly blogs and articles. Re-verify when you revisit the note.
+> Checked 2026-10-20 and 2026-10-21. Re-verify when you revisit this note.
 
-- **Confirmed:** Resilience4j is the standard JVM choice; Netflix put Hystrix into maintenance mode in 2018 and Spring Cloud Netflix followed, recommending Resilience4j. Spring Cloud Circuit Breaker is an abstraction with Resilience4j as an implementation. The newest Resilience4j found was 2.4.0 (March 2026); the example above used 2.2.0.
-- **To verify:** service mesh outlier-detection features for your mesh version; defaults if you upgrade Resilience4j.
-- **Decision rule:** a library breaker when the fallback needs business logic, a mesh for a uniform baseline, both for critical paths.
+- **Confirmed:** Netflix's Hystrix README states Hystrix is no longer in active development and in maintenance mode, and recommends resilience4j for new projects; the latest Resilience4j release on GitHub was v2.4.0 (published 2026-03-14) when checked, while the example above ran on 2.2.0. The table of results above comes from the lab's tests and demo scripts (the demos were re-run on 2026-10-21 and reproduced the open, half-open, closed, declined-card and slow-call behaviours).
+- **Assumptions and illustrations:** the ShopFlow story and the "Elsewhere" example.
+- **To verify:** service-mesh outlier-detection features for your mesh version; default values if you upgrade Resilience4j.
+- **Decision rule:** a library breaker when the fallback needs business logic, a mesh for a uniform baseline, both for critical paths; always under a timeout.
 
-## 12. Going further
+**Sources:** Martin Fowler, "CircuitBreaker"; Michael Nygard, *Release It!*; Resilience4j documentation; Netflix Hystrix README.
 
-- Martin Fowler, ["CircuitBreaker"](https://martinfowler.com/bliki/CircuitBreaker.html)
-- Microsoft Azure Architecture Center, "Circuit Breaker pattern"
-- Resilience4j documentation
-- Michael Nygard, *Release It!*
+## Answers
 
-**Next:** [Bulkhead](06-bulkhead.md) (1.6).
+1. No. Slow calls don't fail, so only the slow-call threshold (and a timeout) catches them.
+2. A decline is a correct business answer. Counting it as a failure would open the breaker and block every customer because some cards were declined.
+3. Track them as pending and reconcile them once the provider is back; a polite fallback is not a completed payment ([1.4](04-idempotency.md)).
+4. It prevents judging on too little data, such as one failed call out of one.
 
-Back to [the index](../README.md) · [Roadmap](../roadmap.md).
+Back to [the resilience overview](01-resilience-overview.md) · [Index](../README.md) · [Roadmap](../roadmap.md).

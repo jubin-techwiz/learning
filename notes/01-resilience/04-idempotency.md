@@ -1,6 +1,6 @@
 ---
 title: Idempotency
-tags: [resilience, idempotency, idempotency-key, retries, api-design, fundamentals]
+tags: [resilience, idempotency, retries, payments, reconciliation, outbox, fundamentals]
 category: resilience
 level: fundamentals
 updated: "2026-10-21"
@@ -9,166 +9,244 @@ updated: "2026-10-21"
 # Idempotency
 
 **Resilience · Step 1.4 · Fundamentals** · Last updated 2026-10-21
+**Prerequisites:** [Timeouts](02-timeouts.md) (1.2), [Retries, backoff and jitter](03-retries-backoff-jitter.md) (1.3)
+
+## 1. The concept in simple English
+
+**What is it?** An operation is **idempotent** if doing it twice has the same effect as doing it once. **Deduplication** is how a system makes an operation behave that way: it recognises a repeat and doesn't act on it again.
+
+**Why do we need it?** Retries, timeouts and redelivered messages all mean the same request can arrive more than once. After a timeout you don't know whether the first attempt happened. Without idempotency, "try again" can mean "charge twice".
+
+**When would I meet it?** On every write that gets retried: payment calls, order creation, message consumers, and any API a client may call again after a timeout.
 
 > [!TIP]
-> **In one sentence:** an operation is idempotent if doing it twice has the same effect as doing it once, which is what makes retries and duplicate messages safe.
->
-> **Memory hook:** a **lift button**. Pressing it five times still brings one lift. A "charge the card" button that charges five times is the opposite, and that's the bug idempotency prevents.
+> **Memory hook:** a lift button. Pressing it five times still brings one lift. A "charge the card" button that charges five times is the bug idempotency prevents.
 
-## Where it fits
+## 2. Mental model: pressing the lift button
 
-Step 1.4 of the [resilience track](01-resilience-overview.md). It makes [retries](03-retries-backoff-jitter.md) safe and answers the "unknown outcome" of a [timeout](02-timeouts.md). It returns in messaging as the *idempotent consumer* and in Kafka as the *idempotent producer*. Next: the circuit breaker (1.5).
+| In the analogy | In the real system |
+|---|---|
+| Pressing the button again | A **retry** or a redelivered message |
+| The lift already called | The first attempt already had its effect |
+| The lift controller remembering the call | The server storing the **idempotency key** and its result |
 
-## 1. The story
+**Where the analogy breaks:** the lift controller is one system. A card charge happens in **another** company's system, so your own memory (your database) and the real effect can disagree, and that gap is where most real bugs live (section 6).
 
-A ShopFlow customer pays €80. `order-service` calls `payment-service`, which charges the card, but the answer is lost on the network and the call times out. `order-service` retries. The card is charged again. The customer sees two €80 charges and calls support, angry.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Idempotent operation** | Repeating it has the same effect as once | Makes retries safe | "Set address to X" | Natural idempotency |
+| **Idempotency key** | A unique ID the client creates once per logical operation and resends on every retry | Lets the receiver recognise a repeat | `payment-order-42` | Client request identifier |
+| **Deduplication** | Detecting and ignoring repeats | The mechanism behind idempotency | Unique constraint on the key | Idempotent consumer |
+| **Unknown outcome** | After a timeout, you can't tell if the operation happened | The case idempotency exists for | Charge request timed out | Timeout ([1.2](02-timeouts.md)) |
+| **Reconciliation** | Comparing your records with the other system's and fixing differences | How you resolve unknown outcomes | Look up the charge by reference | Durable operation record |
+| **At-least-once delivery** | A message is delivered until acknowledged, so it may arrive more than once | Why consumers must deduplicate | Redelivered `OrderPlaced` | At-most-once |
+| **Transactional outbox / inbox** | Store an outgoing event (outbox) or a processed message ID (inbox) in the same **database** transaction as the state change | Reliable messaging around a database | `outbox` table | Dual write |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** A customer pays €80. The Order Service calls the Payment Service, which charges the card at an external payment provider. The charge must happen once, even when networks fail and calls are retried.
+
+The charge succeeds, but the answer is lost and the call times out. The Order Service retries, and the card is charged again. The customer sees two €80 charges and calls support.
 
 ```mermaid
 sequenceDiagram
     participant O as order-service
     participant P as payment-service
+    participant G as payment provider
     O->>P: charge 80 EUR
-    P->>P: card charged
+    P->>G: charge 80 EUR
+    G-->>P: charged
     P--xO: answer lost, timeout
     O->>P: retry: charge 80 EUR
-    P->>P: card charged again
-    Note over O,P: customer charged twice
+    P->>G: charge 80 EUR again
+    Note over O,G: customer charged twice
 ```
 
-## 2. The idea
+**How idempotency helps.** The same logical payment always carries the same key. Whoever receives a repeat recognises it and returns the first result instead of charging again.
 
-Make the second request recognisable. The client creates a unique **idempotency key** for the logical operation ("order 42, payment") and sends it with every attempt. The server remembers keys it has processed and the result it gave. When the same key comes again, it returns the stored result instead of doing the work again.
+**What it costs.** Extra storage and lookups, key lifetime and cleanup, and the need to cooperate with the provider; none of this is free or automatic.
 
-```mermaid
-sequenceDiagram
-    participant O as order-service
-    participant P as payment-service
-    participant D as Key store
-    O->>P: charge 80 EUR, key k42
-    P->>D: save k42 as in progress
-    P->>P: card charged
-    P->>D: save result for k42
-    P--xO: answer lost, timeout
-    O->>P: retry: charge 80 EUR, key k42
-    P->>D: k42 found
-    P-->>O: same result, no second charge
-```
+## 5. How it works
 
-Some operations are idempotent by nature and need nothing extra: "set the address to X", "delete order 42", any read. The ones that need help are "add", "create" and "charge".
+**Four levels of protection.** They protect different things; know which one you have.
 
-## 3. Key terms
+| Level | What it protects | What it does **not** protect |
+|---|---|---|
+| **Natural idempotency** ("set balance to 90", not "subtract 10") | Updates expressed as a final state | Anything that adds or creates |
+| **Database-only deduplication** (key + unique constraint in your database) | State **in that database**, changed in the same transaction | Calls to other systems made during the work |
+| **Provider-supported idempotency** (you send the key, the provider deduplicates) | The provider's own side effect, within its contract | Whatever the provider's contract excludes (key lifetime, scope) |
+| **Durable operation record + reconciliation** | Your ability to recover from unknown outcomes | Nothing by itself; it works together with the other levels |
 
-| Term | Plain meaning |
-|---|---|
-| **Idempotent** | Repeating has the same effect as doing it once |
-| **Idempotency key** | A unique ID the client sends per logical operation |
-| **Natural idempotency** | The operation is safe to repeat by design (set, not add) |
-| **Idempotent consumer** | A message handler that skips messages it has already processed |
-| **Unique constraint** | A database rule that rejects a second identical insert |
-| **At-least-once delivery** | Messages may arrive more than once, never zero times |
+**Why the obvious code is wrong.** This looks safe and isn't:
 
-In HTTP, GET, PUT and DELETE are defined as idempotent; POST and PATCH are not by default.
-
-## 4. How it works, step by step
-
-1. The client creates the key **once** per operation (a UUID) and reuses it on every retry.
-2. The server tries to insert the key as "in progress". A unique constraint means only one request can win.
-3. If the key already exists with a result, return that result.
-4. If the key exists with a **different** request body, reject it (409 or 422): it's a client bug.
-5. Otherwise do the work, store the result with the key, and return it.
-6. Keep keys for a limited time (for example 24 hours), scoped per client.
-
-## 5. Real-world examples
-
-- **Payment APIs:** many payment providers accept an `Idempotency-Key` header, so merchants can safely retry a charge after a timeout.
-- **Message consumers:** a bank's statement service records every processed event ID in the same database transaction as its update, so a redelivered event is skipped.
-- **Booking systems:** a hotel booking uses the client's booking reference as a unique key, so double-clicking "Book" creates one reservation, not two.
-
-## 6. Design choices and trade-offs
-
-| Technique | Use it for |
-|---|---|
-| **Natural idempotency** ("set balance to 90", not "subtract 10") | Updates you can express as a final state |
-| **Idempotency key** | Payments, order creation, any retried POST |
-| **Unique constraint on a natural key** | Creating records with a business reference |
-| **Conditional update (version check)** | Concurrent updates |
-| **Processed-message table** | Message handlers |
-
-**Cost:** extra storage and a lookup on every write, plus key lifetime and cleanup to manage. Worth it wherever a duplicate costs money or trust.
-
-## 7. Common mistakes
-
-1. **Retrying POST with no key** and hoping.
-2. **A new key on each retry**, which defeats the purpose.
-3. **Check-then-act without a unique constraint**, so two parallel requests both pass.
-4. **Not comparing the payload** for a reused key.
-5. **Doing the side effect first and saving the key later**: a crash in between causes a duplicate.
-6. **Forgetting downstream effects** such as emails and published events.
-
-## 8. In code
-
-> [!NOTE]
-> Untested sketch to show the shape.
+> [!WARNING]
+> Defective example, shown so you can recognise it. Untested sketch.
 
 ```java
 @Transactional
 public PaymentResult charge(String key, ChargeRequest request) {
-    var existing = records.findByKey(key);
-    if (existing.isPresent()) {
-        if (!existing.get().matches(request)) throw new IdempotencyKeyReuseException();
-        return existing.get().storedResult();          // replay: no second charge
-    }
-    records.insertInProgress(key, request);            // unique index on key
-    PaymentResult result = gateway.charge(request);
+    if (records.exists(key)) return records.result(key);
+    records.insertInProgress(key, request);        // row exists only inside this transaction
+    PaymentResult result = gateway.charge(request); // external call: NOT part of the transaction
     records.saveResult(key, result);
-    return result;
+    return result;                                  // commit happens here
 }
 ```
 
-| Setting | What it controls |
-|---|---|
-| Unique index on the key | Only one request per key can proceed |
-| Key lifetime | How long replays are recognised |
-| Key scope | Per client or account, so keys can't collide |
+A database transaction cannot make a call to an external provider atomic with its own commit. If the provider charges the card and the process crashes (or the commit fails) before the transaction commits, the `insertInProgress` row **rolls back**. The retry finds no record, calls the provider again, and, unless the provider deduplicates, charges again. The local idempotency record protected nothing, because the real effect happened outside the transaction it lived in.
 
-## 9. Remember
+**A safer workflow.** Make the decision to pay durable *before* calling the provider, and keep the external call outside the database transaction:
 
-- **Idempotent = twice has the same effect as once.**
-- **A timeout is an unknown outcome**: retry only if repeating is safe.
-- **Client makes the key once and reuses it** on every retry.
-- **Store the key first, with a unique constraint.**
-- **Same key, different payload = reject.**
+```mermaid
+sequenceDiagram
+    participant P as payment-service
+    participant D as Database
+    participant G as payment provider
+    P->>D: commit payment_operation: key k42, status PENDING
+    P->>G: charge 80 EUR with key k42
+    alt answer arrives
+        G-->>P: charged
+        P->>D: status CONFIRMED + provider reference
+    else timeout or crash
+        Note over P,D: status stays PENDING (outcome unknown)
+        P->>G: retry with the same key k42, or look the charge up
+        G-->>P: original result
+        P->>D: status CONFIRMED or FAILED
+    end
+```
 
-## 10. Interview corner
-
-**15-second answer:** "Idempotent means repeating has the same effect as doing once; I use idempotency keys or unique constraints so retries and duplicate messages are safe."
-
-**60-second answer:**
-> "Retries and at-least-once delivery mean the same request can arrive twice, and a timeout leaves the outcome unknown. For naturally idempotent operations, like setting a value, nothing extra is needed. For things like charging a card, the client sends a unique idempotency key per operation and reuses it on retries. The server stores the key with a unique constraint before doing the work, saves the result, and returns the stored result for any repeat; the same key with a different payload is rejected. Message handlers do the same with processed message IDs."
-
-**Likely follow-up questions:**
-- **Which HTTP methods are idempotent?** GET, PUT, DELETE (and HEAD, OPTIONS); POST and PATCH are not by default.
-- **How do you handle two simultaneous requests with the same key?** A unique constraint on insert, with an "in progress" state, so only one proceeds.
-- **How long do you keep keys?** Long enough to cover realistic retries, such as 24 hours, then clean up.
-- **How is this different from exactly-once?** Exactly-once in practice is at-least-once delivery plus idempotent handling.
-
-**Architect angle:** "I make idempotency part of every write API and event contract, because retries and redelivery are certain to happen."
-
-## 11. Industry check
+1. **Persist a durable operation record first**, in its own committed transaction: a stable operation ID and idempotency key (derived from the business operation, for example order ID + attempt purpose), the amount, and status `PENDING`.
+2. **Call the provider outside any open database transaction**, sending **the same key on every attempt**.
+3. **Record the result** (provider reference, status) in a new transaction.
+4. **Treat a timeout or crash as "unknown", never as "failed".** Leave the record `PENDING`. Retry with the same key, or ask the provider for the operation's status.
+5. **Reconcile.** A background job re-checks operations stuck in `PENDING` for too long, using the key or your reference, and settles them. This also covers keys that have expired at the provider.
 
 > [!NOTE]
-> Checked 2026-10-21 by web search. Re-verify when you revisit the note.
+> Untested sketch of the shape; the real design depends on the provider's contract and your requirements.
 
-- **Confirmed:** an IETF Internet-Draft, "The Idempotency-Key HTTP Header Field" (latest revision found: 07, October 2025), proposes a standard header to make POST and PATCH fault-tolerant; it says keys should be unique, not reused for a different payload, and suggests a UUID. It is still a draft, not a finished standard. AWS guidance says to retry only idempotent operations.
-- **To verify:** the draft's current status; which payment providers use the header in exactly this form (Stripe is often cited, but my search did not confirm it).
-- **Decision rule:** natural idempotency where possible, an idempotency key or unique constraint everywhere else.
+```java
+var op = operations.createPending(orderId, amount);        // committed: key = op.key(), status PENDING
+try {
+    var result = gateway.charge(op.key(), amount);          // same key on every retry; no open DB transaction
+    operations.markConfirmed(op.id(), result.reference());
+} catch (TimeoutException e) {
+    operations.markUnknown(op.id());                        // not "failed": reconcile later
+}
+```
 
-## 12. Going further
+**If the provider does not support idempotency keys.** You cannot make a blind retry safe. Options, in order of preference: (a) look the operation up by your own reference or metadata before any retry; (b) do not auto-retry: keep the operation `PENDING`/`UNKNOWN`, and let reconciliation or a person resolve it; (c) use a two-step flow (authorise, then capture) so a duplicate authorisation can be released; (d) accept a small duplicate risk and compensate with a refund process. Which is acceptable is a business decision.
 
-- IETF draft, "The Idempotency-Key HTTP Header Field" (work in progress)
-- AWS Well-Architected Framework, Reliability pillar
-- Gregor Hohpe and Bobby Woolf, *Enterprise Integration Patterns* ("Idempotent Receiver")
+**Outbox and inbox, and their actual guarantees.** The **outbox** writes an event to a table in the same *database* transaction as the state change, and a relay publishes it later: the event is published if (and only if) the transaction committed, but the relay can publish twice after a crash, so delivery is at-least-once. The **inbox** (idempotent receiver) stores processed message IDs in the same database transaction as the effect, so redelivered messages are skipped. Both give strong guarantees for the **database** state; neither makes an external call exactly-once. See [2.2.15](../02-messaging/02-kafka/15-kafka-connect-cdc.md) and [2.2.5](../02-messaging/02-kafka/05-offset-commits-delivery-guarantees.md).
 
-**Next:** [Circuit breaker](05-circuit-breaker.md) (1.5).
+**What "at-least-once" does and doesn't promise.** It means the system keeps trying until the message is acknowledged, so duplicates are possible. It holds under assumptions: the message is still retained, the producer's write was acknowledged, the consumer acknowledges only after processing, and retry and recovery policies keep running. It is not a promise that a message can never be lost in any circumstance, and it does not give exactly-once business effects.
 
-Back to [the index](../README.md) · [Roadmap](../roadmap.md).
+**Who guarantees what**
+
+| Layer | Responsible for |
+|---|---|
+| Your database | Atomicity of your own state; unique constraints |
+| Provider | Deduplicating requests that carry its key, within its documented contract |
+| Your application | A stable key, a durable operation record before the call, reconciliation of unknown outcomes |
+| Messaging platform | Redelivery until acknowledged (at-least-once); not business-level deduplication |
+
+## 6. Failure scenarios
+
+### Provider charged, local record rolled back
+
+- **What happened?** The defective example above: charge succeeded, crash before commit.
+- **Why?** The external effect and the local commit aren't atomic.
+- **What the business sees:** a double charge on retry, if the provider doesn't deduplicate.
+- **Solutions:** durable `PENDING` record committed *before* the call; the same key on every attempt; reconciliation.
+- **Trade-offs:** an extra table, a background job, and more states to handle.
+
+### Timeout treated as failure
+
+- **What happened?** The charge timed out; the code marked it failed and created a new charge.
+- **Why?** A timeout means unknown, not failed ([1.2](02-timeouts.md)).
+- **What the business sees:** duplicate charges or a lost sale.
+- **Solutions:** leave the operation `PENDING`; retry with the same key or look it up; reconcile.
+
+### New key on each retry, or key reused for a different request
+
+- **What happened?** The client generated a fresh key per attempt, or reused one for a different amount.
+- **Why?** The key must identify the *logical operation*, created once. A reused key with different parameters is a client bug, and providers may reject it.
+- **Solutions:** derive the key from the business operation and store it in the operation record.
+
+### Key expired at the provider
+
+- **What happened?** A retry came after the provider had removed the key.
+- **Why?** Providers keep keys for a limited time (Stripe API v1 may remove keys at least 24 hours old, and treats a reused key after that as a new request).
+- **Solutions:** reconcile unresolved operations well inside the key lifetime.
+
+### Two identical requests at the same moment
+
+- **What happened?** Both passed the "is there a record?" check.
+- **Solutions:** a unique constraint on the key, with a `PENDING` state; the loser waits or reads the winner's result.
+
+## 7. Architectural decisions
+
+| Technique | Use it for | Cost |
+|---|---|---|
+| Natural idempotency | Updates you can express as a final state | None, when possible |
+| Unique key in your database | State in that database | Table, lookup, cleanup |
+| Provider idempotency key | Retrying calls to a provider that supports it | Read its contract: scope, lifetime, behaviour on mismatch |
+| Durable operation record + reconciliation | Anything with an external side effect | States, a reconciler, operational monitoring |
+| Outbox / inbox | Reliable events and message handling around a database | A relay; duplicates still possible, so consumers deduplicate |
+
+The right mix depends on the provider's contract and what a duplicate costs: a duplicate email is a nuisance, a duplicate charge is a refund and a complaint. **Common mistakes:** retrying a POST without a key; checking then acting without a unique constraint; assuming the database record covers an external call; not comparing the payload for a reused key.
+
+## 8. Check your understanding
+
+1. Why can't a `@Transactional` method that calls a payment provider make the charge idempotent by saving a record inside the transaction?
+2. A payment call times out. What status do you record, and why not "failed"?
+3. The provider doesn't support idempotency keys. Give two ways to reduce the risk of a double charge.
+4. A message consumer writes to your database and sends an email. Which of these does an inbox table protect?
+
+Answers are at the end of this note.
+
+## 9. Revision
+
+**Remember**
+- **Idempotent = repeating has the same effect as once.**
+- **A timeout is an unknown outcome, not a failure.**
+- **The client creates the key once per operation and reuses it on every retry.**
+- **Make the operation durable *before* the external call; keep the call outside the database transaction.**
+- **A database record protects database state, not external calls. Reconcile the rest.**
+
+**Explain in 15 seconds:** "Idempotent means repeating has the same effect as once; I send one key per operation on every retry, record the operation durably before calling the provider, and reconcile unknown outcomes."
+
+**Explain in 60 seconds:**
+> "Retries and at-least-once delivery mean the same request can arrive twice, and a timeout leaves the outcome unknown. Setting a value is naturally idempotent. For a payment, I create a durable operation record with a stable key and commit it first, then call the provider outside any database transaction, sending the same key on every attempt, and record the result. A timeout leaves the operation pending, never failed, and a reconciler settles it by retrying with the same key or looking it up. A database unique key only protects state in that database, and an outbox or inbox gives strong guarantees for database state, not for the external call. If the provider has no idempotency keys, I look the operation up before retrying, or hold it for reconciliation."
+
+**Likely follow-up questions:**
+- **Which HTTP methods are idempotent?** GET, PUT and DELETE by definition (and HEAD, OPTIONS); POST and PATCH are not by default.
+- **How long do you keep keys?** Longer than any realistic retry or reconciliation window, and inside the provider's key lifetime; then clean up.
+- **How is this different from exactly-once?** Exactly-once business effects are achieved in practice with at-least-once delivery plus idempotent handling, and only for effects you control or whose owner deduplicates.
+
+**Architect's takeaway:** treat every call with an external side effect as "may be repeated and may have an unknown outcome", and design the operation record, the key and the reconciliation around that.
+
+**Next topic:** [Circuit breaker](05-circuit-breaker.md) (1.5)
+
+## 10. Verification and sources
+
+> [!NOTE]
+> Checked 2026-10-21 against the pages named below. Re-verify provider behaviour for your provider and API version.
+
+- **Confirmed (Stripe API reference, "Idempotent requests"):** for API v1, Stripe saves the status code and body of the first request made with a key after endpoint execution begins and returns it for retries, including 500 errors; keys may be removed automatically once at least 24 hours old, and a reused key after pruning generates a new request; incoming parameters are compared with the original and a mismatch errors; all POST requests accept idempotency keys, GET and DELETE don't need them; API v2 behaves differently (retries don't repeat successful operations).
+- **Confirmed (Amazon Builders' Library, "Making retries safe with idempotent APIs"):** a retry with the same client request identifier should return a semantically equivalent response; recording the identifier and performing the state change must be atomic (ACID), or a failure can leave the token recorded without the effect; after a timeout the outcome can be unclear and, without an identifier, requires reconciling state; a reused identifier with different parameters should be rejected.
+- **Assumptions and illustrations:** the ShopFlow story, the state names and the code (not run); the five-step workflow is a design pattern, not any provider's documented procedure.
+- **To verify:** the current status of the IETF draft "The Idempotency-Key HTTP Header Field" (a draft, not a standard, when last checked); your provider's own key lifetime and scope.
+- **Decision rule:** natural idempotency where possible; otherwise a key per logical operation, a durable record before the external call, and reconciliation.
+
+**Sources:** Stripe API reference, "Idempotent requests"; Amazon Builders' Library, "Making retries safe with idempotent APIs"; Gregor Hohpe and Bobby Woolf, *Enterprise Integration Patterns* ("Idempotent Receiver"); microservices.io, "Transactional outbox".
+
+## Answers
+
+1. The provider's charge happens outside the database transaction. If the charge succeeds and the process crashes or the commit fails, the transaction (including the saved record) rolls back, but the charge stays. The retry sees no record and charges again unless the provider deduplicates.
+2. Record it as pending or unknown. The provider may have charged the card and only the answer was lost. Retry with the same key, or look the charge up, and reconcile.
+3. Look the operation up by your own reference before any retry; don't auto-retry and hold the operation for reconciliation; use authorise-then-capture so a duplicate authorisation can be released; or accept a small risk and compensate with refunds.
+4. The inbox table protects the **database** change from being applied twice when the message is redelivered. It does not stop the email being sent again; that needs the email provider's idempotency support, or an accepted duplicate risk.
+
+Back to [the resilience overview](01-resilience-overview.md) · [Index](../README.md) · [Roadmap](../roadmap.md).

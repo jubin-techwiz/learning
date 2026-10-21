@@ -112,7 +112,7 @@ The authoring rules live in `LEARNING-STANDARD.md` at the repository root (outsi
 Only the concept, the terms, the ShopFlow example, how it works, the questions, the revision and the verification are always present; analogies, diagrams, code, failure scenarios and the other parts appear only where they help, and the sections are renumbered, so numbers can differ slightly between notes.
 
 > [!NOTE]
-> The messaging notes (2.1 to 2.2.18) and resilience notes 1.1 to 1.3 use this format. Resilience notes 1.4 to 1.10 still use the earlier format (story, idea, key terms, interview corner, industry check); their content is complete and is being migrated.
+> The resilience notes (1.1 to 1.10, with the cheat sheet) and the messaging notes (2.1 to 2.2.18) all use this format.
 
 **Notes with a "Try it yourself" experiment:** [2.2.2](02-messaging/02-kafka/02-log-topics-partitions-offsets.md), [2.2.4](02-messaging/02-kafka/04-consumers-consumer-groups.md), [2.2.5](02-messaging/02-kafka/05-offset-commits-delivery-guarantees.md), [2.2.7](02-messaging/02-kafka/07-rebalancing-static-membership.md) and [2.2.13](02-messaging/02-kafka/13-retention-compaction-tiered-storage.md). They need only a local Kafka broker and its command-line tools, and were run on Apache Kafka 4.3.2 on 2026-10-21.
 
