@@ -61,7 +61,7 @@ Folder and file numbers form the step number, so alphabetical order is learning 
 - Notes are self-contained: example code and real results are written inside the note.
 - Labs document themselves and do not depend on the notes.
 - Only record results that were actually observed, with versions.
-- Each note has a Verification and sources section (Industry check in older notes); verify it before relying on the note.
+- Each note has a Verification and sources section that says what was checked, against which versions, and what is still unverified; read it before relying on the note.
 - Build output (`target/`, `node_modules/`) and secrets are never committed; see `.gitignore`.
 
 ## Version control

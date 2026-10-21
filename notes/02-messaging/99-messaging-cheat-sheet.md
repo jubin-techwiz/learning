@@ -41,10 +41,10 @@ The line is blurring: RabbitMQ has streams, and Kafka's queue-style **share grou
 | Layer | Guarantees | Does not guarantee |
 |---|---|---|
 | Kafka brokers | Durable, ordered storage per partition (with `acks=all`, replication factor 3, `min.insync.replicas=2`) | That anyone processed the event |
-| Producer client | Retries without duplicates (idempotence); atomic writes with transactions | That your database write and the send both happen |
-| Spring Kafka | Polling, commits after the listener (`AckMode.BATCH` by default), error handling | Idempotent business logic |
-| Your application | Idempotent processing; outbox for database + event | |
-| External systems (email, payments) | Their own semantics; use their idempotency keys | Kafka's exactly-once does not reach them |
+| Producer client | Retries without duplicates within a producer session (idempotence); transactions make writes and consumed offsets atomic across Kafka topics only | That your database write and the send both happen; anything outside Kafka |
+| Spring Kafka | Polling, commits per ack mode (`BATCH` by default: after the poll's records are handled), retries and DLT publishing if configured | Idempotent business logic; successful processing of a dead-lettered event |
+| Your application | Idempotent processing of its own state (dedupe in the same database transaction); outbox for database + event; ownership and replay of the DLT | Duplicate-free calls to other systems unless they support idempotency |
+| External systems (email, payments) | Their own semantics; use their idempotency keys | Kafka's exactly-once and your database dedupe do not reach them |
 
 ## Kafka notes at a glance
 
@@ -53,10 +53,10 @@ The line is blurring: RabbitMQ has streams, and Kafka's queue-style **share grou
 | [2.2.2](02-kafka/02-log-topics-partitions-offsets.md) | Log, partitions, offsets | Checkout lanes with numbered receipts | Order only inside a partition; topic + partition + offset identifies an event; reading doesn't delete |
 | [2.2.3](02-kafka/03-producers-keys-acks-batching.md) | Producers | A courier who sorts by address and asks for signatures | Same key, same partition (while the count is unchanged); `acks=all` + idempotence; `send` is asynchronous, so handle the result |
 | [2.2.4](02-kafka/04-consumers-consumer-groups.md) | Consumer groups | A team of cashiers, one per lane | One partition, one member per group; partitions cap parallelism; watch lag |
-| [2.2.5](02-kafka/05-offset-commits-delivery-guarantees.md) | Offset commits | A bookmark on the train | Committed offset = next to read. Commit before processing may lose; after may repeat. Commit after processing + idempotent consumer |
+| [2.2.5](02-kafka/05-offset-commits-delivery-guarantees.md) | Offset commits | A bookmark on the train | Committed offset = next to read. Commit before processing may lose; after may repeat. Commit after processing + idempotent consumer; the dedupe record covers your database state, not repeated external calls |
 | [2.2.6](02-kafka/06-brokers-replication-leader-election.md) | Replication | Head chef and sous-chefs | Only in-sync replicas take over; readers see up to the high watermark; 3 KRaft controllers tolerate 1 failure |
 | [2.2.7](02-kafka/07-rebalancing-static-membership.md) | Rebalancing | Waiters and tables | Cooperative moves only some partitions; static membership survives quick restarts; commit in `onPartitionsRevoked` |
-| [2.2.8](02-kafka/08-error-handling-retries-dlt.md) | Errors and DLTs | The "undeliverable" shelf | Transient: retry with backoff. Permanent: dead-letter at once. Outage: pause. DLT needs alerts, owner, replay |
+| [2.2.8](02-kafka/08-error-handling-retries-dlt.md) | Errors and DLTs | The "undeliverable" shelf | Transient: retry with backoff. Permanent: dead-letter at once. Outage: pause. A DLT entry means the work was **not** done, and replays can arrive out of order; it needs alerts, an owner and replay |
 | [2.2.9](02-kafka/09-idempotent-producer-transactions.md) | Exactly-once | A bank transfer | Idempotent producer + transactions + `read_committed` + fencing; Kafka-to-Kafka only; rewind after abort |
 | [2.2.10](02-kafka/10-schemas-evolution.md) | Schemas | A standard plug socket | BACKWARD (default): upgrade consumers first; add optional fields with defaults; breaking change = new event type |
 | [2.2.11](02-kafka/11-ordering-partition-planning-hot-partitions.md) | Partition planning | Airport check-in desks | Partitions ≥ max(t/p, t/c), measured; a hot key stays hot whatever the count |
@@ -70,7 +70,7 @@ The line is blurring: RabbitMQ has streams, and Kafka's queue-style **share grou
 
 ## Defaults worth knowing
 
-Checked for Apache Kafka 3.x / 4.0 and Spring Kafka 3.x; re-verify for your versions.
+Client, broker and topic values were read from Apache Kafka 4.3.2 on 2026-10-21; the "since version X" history comes from the Apache Kafka upgrade notes and KIPs; the Spring Kafka rows come from its reference documentation (3.1 to 4.1 pages agree). Defaults change between versions, so re-verify for yours.
 
 | Setting | Default | Note |
 |---|---|---|

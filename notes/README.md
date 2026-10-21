@@ -98,15 +98,15 @@ The authoring rules live in `LEARNING-STANDARD.md` at the repository root (outsi
 | Section | Why it is there |
 |---|---|
 | **The concept in simple English** | What it is, why we need it, when you meet it, and a memory hook |
-| **Mental model** | An everyday analogy mapped to the real parts, and where the analogy breaks |
+| **Mental model** (optional) | An everyday analogy mapped to the real parts, and where the analogy breaks |
 | **Industry terms** | The vocabulary interviewers and colleagues use, with simple meanings and examples |
 | **In a real system (ShopFlow)** | The business problem first, then how the concept helps and what it costs, optionally short cases from other industries ("Elsewhere") |
-| **How it works** | A diagram, the flow step by step, who guarantees what, and a small explained example |
-| **Failure scenarios** | What goes wrong, why, what users see, the fix and its trade-offs |
-| **Architectural decisions** | When to use it, when not, the alternatives, and common mistakes |
+| **How it works** | The flow step by step and who guarantees what; a diagram or a small explained example only where it helps |
+| **Failure scenarios** (where relevant) | What goes wrong, why, what users see, the fix and its trade-offs |
+| **Architectural decisions** (substantial topics) | When to use it, when not, the alternatives, and optionally common mistakes |
 | **Try it yourself** (optional) | A small predict-then-run experiment |
 | **Check your understanding** | Three to five questions; the answers are at the end of the note |
-| **Revision** | Remember, a 15-second and a 60-second explanation, likely interview follow-up questions, the architect's takeaway, the next topic |
+| **Revision** | Remember, a 15-second and a 60-second explanation, optionally likely interview follow-up questions, the architect's takeaway, the next topic |
 | **Verification and sources** | What was checked, against which versions, and what still needs verifying |
 
 Only the concept, the terms, the ShopFlow example, how it works, the questions, the revision and the verification are always present; analogies, diagrams, code, failure scenarios and the other parts appear only where they help, and the sections are renumbered, so numbers can differ slightly between notes.
@@ -159,5 +159,5 @@ ShopFlow is imaginary; it exists only to give every lesson the same, familiar se
 ## How they are kept up to date
 
 - After each lesson, the learning coach creates or updates the topic's note, the area overview, this page, and the topic's status in [the roadmap](roadmap.md).
-- Each note has a **Verification and sources** section (an **Industry check** in the resilience notes). Re-verify it before relying on a note.
+- Each note has a **Verification and sources** section. Re-verify it before relying on a note.
 - Progress tracking (completed lessons, weak areas, next lesson) lives separately in `progress/`, outside this folder.

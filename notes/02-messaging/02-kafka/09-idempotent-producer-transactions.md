@@ -66,7 +66,7 @@ sequenceDiagram
 
 **What it costs.** Output is visible only when the transaction commits (extra latency), more complex code, and it covers nothing outside Kafka.
 
-**Elsewhere:** a Kafka Streams app sums transactions per account into a balance topic with `exactly_once_v2`, so a crash never double-counts; a currency-conversion pipeline uses transactions so restarts don't duplicate converted prices; a team that needs results in PostgreSQL skips Kafka transactions and instead upserts by event ID, storing the offset in the same database transaction.
+**Elsewhere:** a Kafka Streams app sums transactions per account into a balance topic with `exactly_once_v2`, so a crash doesn't double-count in the topics it reads and writes (a database or API the app also calls is outside that guarantee); a currency-conversion pipeline uses transactions so restarts don't duplicate converted prices; a team that needs results in PostgreSQL skips Kafka transactions and instead upserts by event ID, storing the offset in the same database transaction.
 
 ## 5. How it works
 
@@ -99,7 +99,7 @@ Kafka Streams does all of this with `processing.guarantee=exactly_once_v2`.
 
 | Layer | Responsible for |
 |---|---|
-| Kafka broker and protocol | Deduplicating producer retries; atomic visibility of transactional writes and offsets; fencing |
+| Kafka broker and protocol | Deduplicating producer retries (within a producer session); atomic visibility of transactional writes and consumed offsets, across Kafka topics only; fencing |
 | Client (or Kafka Streams) | Running the transaction steps; `read_committed` filtering |
 | Spring Kafka | Transaction management via `transaction-id-prefix` and a Kafka transaction manager |
 | Application | Rewinding after aborts (plain clients), keeping transactions short, handling side effects outside Kafka |

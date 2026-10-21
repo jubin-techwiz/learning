@@ -8,7 +8,10 @@ For every note in notes/:
     and end with an Answers section;
   - references to existing notes such as "(2.2.11)" are links, not bare numbers
     (notes that are only planned may stay plain text);
-  - front matter has title, tags, category, level and a valid `updated` date;
+  - front matter has title, a non-empty tags list, a category matching the area folder,
+    a valid level and a valid `updated` date;
+  - topic notes have a Prerequisites line and a Next topic line, and the Next topic line
+    links to a note (or says the topic is planned / the series is complete);
   - the "Step N" label in the position line matches the file's path;
   - every note is linked from notes/README.md and notes/roadmap.md.
 
@@ -29,7 +32,7 @@ os.chdir(ROOT)
 REQUIRED = ['The concept in simple English', 'Industry terms', 'In a real system (ShopFlow)', 'How it works',
             'Check your understanding', 'Revision', 'Verification and sources']
 LAB_REFERENCE = re.compile(r'labs/|resilience-demo|circuit-breaker-demo|\bmvn |demo[-\w]*\.sh')
-BARE_STEP = re.compile(r'(?<![\[\d.\w/-])\((\d+\.\d+(?:\.\d+)?)\)')
+BARE_STEP = re.compile(r'(?<![\[\d.\w/-])\((?:see |and )?(\d+\.\d+(?:\.\d+)?)\)')   # "(2.2.5)" and "(see 2.2.5)"
 
 problems = 0
 old_format = []
@@ -84,6 +87,11 @@ for f in sorted(glob.glob('notes/**/*.md', recursive=True)):
         for k in ('title', 'tags', 'category', 'level', 'updated'):
             if k not in keys:
                 report(f, f'front matter is missing "{k}"')
+        if 'tags' in keys and not re.fullmatch(r'\[\s*[^\]\s][^\]]*\]', keys['tags'].strip()):
+            report(f, 'front matter tags must be a non-empty list, for example [kafka, messaging]')
+        area = re.match(r'notes/\d+-([^/]+)/', f)
+        if area and 'category' in keys and keys['category'].strip('"\'') != area.group(1):
+            report(f, f'front matter category "{keys["category"]}" does not match the area folder "{area.group(1)}"')
         if keys.get('level') not in (None, 'fundamentals', 'intermediate', 'advanced'):
             report(f, f'front matter level "{keys["level"]}" is not fundamentals, intermediate or advanced')
         if 'updated' in keys:
@@ -120,6 +128,15 @@ for f in sorted(glob.glob('notes/**/*.md', recursive=True)):
             report(f, f'missing section "{req}"')
     if not headings or headings[-1] != 'Answers':
         report(f, 'the last section must be "Answers"')
+
+    if step_of(f):                                     # topic notes and overviews, not glossary or cheat sheet
+        if not any(l.startswith('**Prerequisites:**') for l in lines):
+            report(f, 'missing "**Prerequisites:**" line (write "none" if there are none)')
+        nxt = [l for l in lines if l.startswith('**Next topic:**')]
+        if not nxt:
+            report(f, 'missing "**Next topic:**" line in the Revision section')
+        elif not re.search(r'\]\([^)]+\.md\)|planned|complete|completes', nxt[0], re.I):
+            report(f, 'the Next topic line must link to a note (or say it is planned or the series is complete)')
 
     for i, line in enumerate(lines, 1):
         if line.startswith(('**Messaging', '**Resilience', '**Prerequisites', '**Next topic', '#')):

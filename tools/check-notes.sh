@@ -7,6 +7,7 @@ set -u
 cd "$(dirname "$0")/.."
 REPO="$(pwd)"
 status=0
+skipped=""
 
 python3 tools/check-links.py || status=1
 python3 tools/check-structure.py || status=1
@@ -15,8 +16,14 @@ if [ -n "${KENMORA_WEB:-}" ] && [ -d "$KENMORA_WEB/node_modules" ]; then
   (cd "$KENMORA_WEB" && LEARNING_NOTES="$REPO/notes" npx vite-node "$REPO/tools/render-check.ts") || status=1
   node tools/mermaid-check.mjs || status=1
 else
-  echo "render and mermaid: skipped (set KENMORA_WEB to Kenmora's web folder to run them)"
+  skipped=" Skipped: Kenmora render and Mermaid (set KENMORA_WEB to Kenmora's web folder)."
+  echo "render and mermaid: SKIPPED (set KENMORA_WEB to Kenmora's web folder to run them)"
 fi
 
-[ $status -eq 0 ] && echo "All checks passed." || echo "Some checks failed."
+if [ $status -eq 0 ]; then
+  echo "All executed checks passed.${skipped}"
+else
+  echo "Some checks failed.${skipped}"
+fi
+echo "Note: these are static checks of structure and links. They cannot establish technical accuracy or teaching quality."
 exit $status

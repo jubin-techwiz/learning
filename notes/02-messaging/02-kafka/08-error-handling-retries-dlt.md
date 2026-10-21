@@ -85,6 +85,8 @@ flowchart LR
 5. **Dead-letter:** after the last attempt, the event is published to the DLT with headers (original topic, partition, offset, exception), and its offset is committed so the partition moves on. By default Spring writes to the **same partition number** in the DLT, so create the DLT with at least as many partitions as the original topic, and set its name explicitly: the default suffix changed between Spring Kafka versions.
 6. **Operate the DLT:** alert, fix, replay.
 
+**A DLT entry is not a success.** Dead-lettering commits the offset so the partition can move on, but the business operation for that event did **not** happen (no stock reserved, no email sent). Later events for the same key are processed meanwhile, and a replay arrives after them, so order for that key is no longer guaranteed. If a later event depends on the parked one, handle that case (version numbers, parking the key's later events too) or accept the gap.
+
 **Deserialization errors** happen before your code runs. Spring's `ErrorHandlingDeserializer` delivers the failure to the error handler, where it is treated as fatal (no retries) and can be dead-lettered.
 
 **If you configure nothing:** Spring's `DefaultErrorHandler` tries a failing record 10 times with no delay, then only logs it and moves on. There is no back-off and no DLT, so the event is effectively dropped. Always configure the error handler.
@@ -145,12 +147,12 @@ DefaultErrorHandler errorHandler(KafkaTemplate<Object, Object> template) {
 |---|---|---|---|
 | Blocking retries (few, short) | Yes | Yes, briefly | Short blips; ordered flows |
 | Retry topics | No | No | Longer transient failures where order doesn't matter |
-| Straight to DLT | Yes for the rest | No | Permanent errors |
+| Straight to DLT | The rest keep flowing, but order for that key is broken once the parked event is replayed | No | Permanent errors |
 | Pause consumption | Yes | Yes, deliberately | Dependency outages |
 
 Spring's retry topics are not supported with batch listeners or container transactions.
 
-**Common mistakes:** retrying permanent errors forever; a DLT nobody watches (silent data loss); treating a dependency outage as poison; retrying without idempotency; non-blocking retries where order matters; DLT records without context headers; retrying deserialization errors.
+**Common mistakes:** treating a DLT entry as handled (the work wasn't done, and replays can arrive out of order); retrying permanent errors forever; a DLT nobody watches (silent data loss); treating a dependency outage as poison; retrying without idempotency; non-blocking retries where order matters; DLT records without context headers; retrying deserialization errors.
 
 ## 8. Check your understanding
 
