@@ -3,192 +3,160 @@ title: Bulkhead
 tags: [resilience, bulkhead, resilience4j, spring-boot, fundamentals]
 category: resilience
 level: fundamentals
-updated: "2026-10-20"
+updated: "2026-10-21"
 ---
 
 # Bulkhead
 
-**Category:** Resilience · **Level:** Fundamentals · **Last updated:** 2026-10-20
+**Resilience · Step 1.6 · Fundamentals** · Last updated 2026-10-21
 
-> [!NOTE]
-> Examples use Java 17, Spring Boot 3.2.4 and Resilience4j 2.2.0. The results in section 10 come from a real run of exactly this setup. Related: [Circuit Breaker](05-circuit-breaker.md).
-
-## In one minute
-
-A bulkhead limits how many calls can use one dependency at the same time. Extra callers are refused straight away instead of waiting. That way a slow dependency can only tie up its own small share of your threads, and the rest of your app keeps working. The name comes from the sealed compartments in a ship's hull: if one floods, the ship stays afloat.
+> [!TIP]
+> **In one sentence:** a bulkhead limits how many calls can use one dependency at the same time, so a slow dependency can only tie up its own small share of your threads.
+>
+> **Memory hook:** the **sealed compartments of a ship's hull**. If one floods, the water stays there and the ship stays afloat. Or a **supermarket with a separate checkout for click-and-collect**: a long queue there doesn't block the other tills.
 
 ## Where it fits
 
-This is step **1.6** of the [resilience track](01-resilience-overview.md). It is an **independent** pattern: it is *not* part of the circuit breaker. They are siblings that answer different questions (how many calls at once, versus has this dependency failed enough to stop calling it) and are often used together. Learn it after the [circuit breaker](05-circuit-breaker.md).
+Step 1.6 of the [resilience track](01-resilience-overview.md). It is **independent**, not part of the [circuit breaker](05-circuit-breaker.md): they are siblings that answer different questions and are often used together. A bulkhead also relies on [timeouts](02-timeouts.md), so a stuck call eventually frees its slot. Next: rate limiting (1.7).
 
-## Why it matters for your role
+## 1. The story
 
-- **As an engineer:** you add a bulkhead around each outside call that could be slow, choose the limit, write a fallback for the "full" case, and watch the rejection count.
-- **As an architect:** you decide which dependencies get their own limit, how big each one is, what the user sees when it is full, and whether to isolate at the code level, the pod level or the service level.
-
-## 1. The problem
-
-Your app has a fixed number of request threads. In the example it is 10, set small on purpose (Tomcat's default is 200). Every request that calls a slow dependency keeps its thread until the answer comes back.
-
-If 10 customers ask for stock while inventory takes 3 seconds, all 10 threads are busy. Nobody can open the cart page, even though the cart has nothing to do with inventory. One slow dependency used up a shared resource.
-
-> [!IMPORTANT]
-> The danger is not the slow call itself. The danger is that slow calls pile up and use up threads that everything else needs.
-
-## 2. The core idea
-
-Give each dependency its own **limit**. Calls inside the limit run normally. A call beyond the limit is turned away immediately and gets a fallback.
+ShopFlow's `order-service` has a fixed pool of request threads. During a sale, `inventory-service` becomes slow, taking 3 seconds per stock check. Ten customers ask for stock at the same moment, and all request threads end up waiting on inventory. Then someone opens the **cart page**, which has nothing to do with inventory, and it has to queue for a free thread.
 
 ```mermaid
 flowchart LR
-    subgraph app[Your app: 10 request threads]
-        R[Requests]
-        R --> I{Inventory limit: 3}
-        R --> P[Payment calls]
-        R --> C[Cart page]
-    end
-    I -->|3 allowed| INV[(Inventory service)]
-    I -.->|7 refused at once| F[Fallback answer]
-    P --> PAY[(Payment service)]
+    S[10 stock checks] --> T[All request threads]
+    T -->|each waits 3 s| I[inventory-service: slow]
+    C[Cart page] -.->|no free thread| T
 ```
 
-With the limit in place (3 in the example), at most 3 threads can ever be stuck on inventory. The other 7 threads stay free.
+The slow call isn't the real danger. The danger is slow calls **using up threads everything else needs**.
 
-## 3. Bulkhead vs circuit breaker
+## 2. The idea
 
-They solve different problems and work well together.
+Give each dependency its own **limit**. Calls inside the limit run normally. A call beyond it is **refused at once** and gets a fallback, such as "stock not checked". With a limit of 3, at most 3 threads can ever be stuck on inventory; the rest stay free.
+
+```mermaid
+flowchart LR
+    R[Requests] --> L{Inventory limit: 3}
+    L -->|3 allowed| I[(inventory-service)]
+    L -.->|rest refused at once| F[Fallback: stock not checked]
+    R --> C[Cart page: free threads, instant]
+```
+
+## 3. Key terms
+
+| Term | Plain meaning |
+|---|---|
+| **Bulkhead** | A per-dependency limit on concurrent calls |
+| **Concurrent calls** | Calls in flight at the same moment |
+| **Semaphore bulkhead** | Counts calls running at once, on the caller's thread |
+| **Thread-pool bulkhead** | Runs calls in a separate small pool with a queue |
+| **Max wait** | How long an extra caller may wait for a slot (0 = refuse at once) |
+| **Thread starvation / exhaustion** | No free threads left for other work |
+
+## 4. How it works, step by step
+
+1. A call arrives for inventory.
+2. If fewer than the limit are running, it gets a **permit** and runs.
+3. If the limit is reached, it waits up to the max wait (usually zero), then is **refused**.
+4. The refused call goes straight to the fallback.
+5. When a running call finishes (or times out), its permit is returned.
+
+**Two kinds in Resilience4j:** the **semaphore** bulkhead (cheap, for normal blocking code, the usual start) and the **thread-pool** bulkhead (for async code returning a `CompletableFuture`; costs extra threads).
+
+## 5. Real-world examples
+
+- **Airline websites:** the seat-map provider is slow on a busy day; a bulkhead caps calls to it, so search and check-in keep working and the seat map shows "try again".
+- **SaaS platforms:** a separate limit (or separate pods) per large customer, so one tenant's heavy export can't starve everyone else.
+- **Microservice gateways:** per-backend connection limits, so one slow backend can't take all the gateway's connections.
+
+## 6. Design choices and trade-offs
 
 | | Bulkhead | Circuit breaker |
 |---|---|---|
-| Question it answers | How many calls at once? | Is the dependency healthy at all? |
-| Looks at | Number of calls in flight right now | Results of recent calls |
+| Question | How many calls at once? | Is the dependency healthy at all? |
+| Looks at | Calls in flight right now | Results of recent calls |
 | Reacts | Immediately, on every call | After enough failures or slow calls |
-| Protects against | Threads running out | Wasting calls on a broken service |
-| Example | "No more than 3 inventory calls at once" | "Inventory has failed 50%, stop calling for 10s" |
+| Protects against | Running out of threads | Wasting calls on a broken service |
 
-The bulkhead protects you in the first seconds of a slowdown. The breaker takes over once the pattern is clear.
+**Choosing the limit:** roughly requests per second × normal response time in seconds (30 requests/s at 100 ms is about 3 in flight), plus headroom. Keep the sum of all limits well below your total threads.
 
-## 4. Two kinds in Resilience4j
+**Code or infrastructure:** a code-level bulkhead gives a per-dependency limit with a custom fallback; separate pods, resource limits or connection pools isolate more strongly.
 
-| | Semaphore bulkhead | Thread-pool bulkhead |
-|---|---|---|
-| How it limits | Counts calls running at once | Runs calls in a separate small thread pool with a queue |
-| The call runs on | The caller's own thread | A thread from the dedicated pool |
-| Main settings | `maxConcurrentCalls`, `maxWaitDuration` | `maxThreadPoolSize`, `coreThreadPoolSize`, `queueCapacity` |
-| Good for | Normal blocking code (what the example uses) | Async code that returns a `CompletableFuture` |
-| Cost | Very cheap | Extra threads and context switches |
+## 7. Common mistakes
 
-The example uses the semaphore kind, which is the usual starting point.
+1. **One bulkhead for everything**: just a smaller shared pool, no isolation.
+2. **A limit as big as the thread pool**, so nothing is protected.
+3. **A long max wait**: waiting callers hold threads again.
+4. **No fallback** for the "full" case.
+5. **Not watching rejections**, hiding a capacity problem.
+6. **Forgetting timeouts**: a bulkhead limits *how many* wait, not *how long*.
 
-## 5. Settings used in the example
+## 8. In code
 
-```yaml
-resilience4j:
-  bulkhead:
-    instances:
-      inventory:
-        maxConcurrentCalls: 3     # at most 3 inventory calls at the same time
-        maxWaitDuration: 0        # a 4th caller does not queue; it is refused immediately
-```
+> [!NOTE]
+> This configuration was run and checked with automated tests on Java 17, Spring Boot 3.2.4 and Resilience4j 2.2.0. The results below come from that run.
 
 ```java
-@Bulkhead(name = "inventory", type = Bulkhead.Type.SEMAPHORE, fallbackMethod = "stockFallback")
+@Bulkhead(name = "inventory", type = Bulkhead.Type.SEMAPHORE, fallbackMethod = "stockUnknown")
 public StockResult checkStock(String sku) { ... }
-
-StockResult stockFallback(String sku, BulkheadFullException e) { ... }
 ```
 
-`maxWaitDuration: 0` means no queueing. A small wait can smooth short bursts, but a long wait puts the problem back, because waiting callers hold threads again.
+```yaml
+resilience4j.bulkhead.instances.inventory:
+  maxConcurrentCalls: 3
+  maxWaitDuration: 0
+```
 
-## 6. How to choose the limit
-
-Start from numbers, not guesses:
-
-- **Rough rule:** limit ≈ requests per second to the dependency × its normal response time in seconds. For example, 30 requests/s at 100 ms gives 3 calls in flight on average. Add some headroom for bursts.
-- **Keep the total sensible.** If you have 5 dependencies with a limit of 5 each, that is 25 threads. Make sure the sum still leaves threads free for everything else.
-- **Check the dependency's own capacity.** If inventory can handle 20 parallel calls and you have 4 pods, each pod can allow about 5.
-- **Tune from metrics.** Watch how often calls are refused. Constant refusals mean the limit is too low or the dependency is too slow.
-
-## 7. What to do when it is full (the fallback)
-
-The same rules as the circuit breaker fallback apply:
-
-- A saved value or "stock not checked" (what the example returns).
-- A default.
-- A clear "busy, try again" error, ideally with a `Retry-After` hint.
-
-> [!TIP]
-> A refusal is information, not a failure. A fast "busy" answer is better than a slow answer that blocks everyone else.
-
-## 8. Common mistakes
-
-1. **One bulkhead for everything.** That is just a smaller shared pool, with no isolation between dependencies.
-2. **A limit that is too big.** If the limit equals the number of request threads, nothing is protected.
-3. **A long `maxWaitDuration`.** Waiting callers hold threads, so the protection disappears.
-4. **No fallback** for the full case, so users see raw errors.
-5. **Not watching rejections.** A bulkhead that quietly refuses 40% of calls hides a real capacity problem.
-6. **Calling the annotated method from the same class.** The annotation works through a proxy, so a self-call skips it (the same gotcha as the circuit breaker).
-7. **Forgetting timeouts.** A bulkhead limits how many calls wait, not how long each waits. You still need a timeout.
-
-## 9. Operating it
-
-Track: calls currently in progress, available permits, and **rejected calls**. Alert when rejections stay high for several minutes.
-
-With Spring Boot Actuator (expose `bulkheads` and `bulkheadevents` in `management.endpoints.web.exposure.include`). Checked against a running app on Spring Boot 3.2.4 with Resilience4j 2.2.0:
-
-- `/actuator/bulkheadevents` lists every `CALL_PERMITTED` and `CALL_REJECTED`.
-- `/actuator/metrics` has `resilience4j.bulkhead.available.concurrent.calls` and `resilience4j.bulkhead.max.allowed.concurrent.calls`.
-- `/actuator/bulkheads` only lists the bulkhead names.
-
-## 10. Example run and results
-
-**Setup:** a small Spring Boot service with 10 request threads. A stock check calls an inventory service that takes 3 seconds. The same check is exposed twice: once with no protection and once with the bulkhead (limit 3, no waiting). Ten customers ask for stock at the same moment, and half a second later someone opens the cart page, which has nothing to do with inventory.
-
-**What happened:**
+**What the example run showed** (10 request threads, inventory taking 3 s, 10 customers at once, then the cart page):
 
 | | Without bulkhead | With bulkhead (limit 3) |
 |---|---|---|
 | Stock checks that ran | 10 | 3 |
-| Stock checks refused at once | 0 | 7 (about 1 ms each) |
-| Slowest stock reply | 3.0 s | 3.0 s |
-| **Cart page (unrelated)** | **2.5 s** | **0.0015 s** |
+| Refused at once | 0 | 7 (about 1 ms each) |
+| **Cart page** | **2.5 s** | **0.0015 s** |
 
-Two automated tests checked the same thing: without a bulkhead the cart page waits for a free thread; with one, only 3 inventory calls are ever in flight and the cart page is instant.
+Spring Boot Actuator lists every permitted and rejected call at `/actuator/bulkheadevents`, and `/actuator/metrics` has `resilience4j.bulkhead.available.concurrent.calls`.
+
+## 9. Remember
+
+- **A bulkhead limits calls at the same time**; a breaker reacts to failures. Siblings, not parent and child.
+- **Refuse at once** (max wait 0); waiting callers hold threads.
+- **One bulkhead per dependency.**
+- **It doesn't replace a timeout.**
+- **The proof:** cart page 2.5 s without, 0.0015 s with.
+
+## 10. Interview corner
+
+**15-second answer:** "A bulkhead caps concurrent calls per dependency, so a slow dependency can only use its own share of threads and the rest of the app stays fast."
+
+**60-second answer:**
+> "A slow dependency is dangerous because waiting calls hold threads until nothing is left for other features. A bulkhead gives each dependency its own limit on concurrent calls; extra calls are refused immediately and get a fallback, so unrelated pages keep working. I use a semaphore bulkhead per dependency, size it from request rate times response time, keep the wait at zero, and watch rejections. It works with timeouts and a circuit breaker, and for stronger isolation I separate workloads at the pod level."
+
+**Likely follow-up questions:**
+- **Bulkhead versus circuit breaker?** Bulkhead: how many at once, from the first second. Breaker: stop after observed failures.
+- **Why max wait zero?** Waiting callers hold threads, so the protection disappears.
+- **Semaphore or thread pool?** Semaphore for normal blocking code; thread pool for async code, at the cost of extra threads.
+- **Do virtual threads make bulkheads unnecessary?** They make running out of threads less likely, but the dependency can still be overloaded, so a per-dependency limit is still useful.
+
+**Architect angle:** "I decide where isolation lives: a code-level bulkhead per dependency, or separate pods and pools when the blast radius justifies it."
 
 ## 11. Industry check
 
 > [!NOTE]
-> Last checked: 2026-10-20, by one web search (tutorials and a GitHub issue; the official Resilience4j docs did not come up). The defaults below are from secondary sources, so check the official docs before relying on them. Re-verify this section when you revisit the note.
+> Checked 2026-10-20 by web search (tutorials and a GitHub issue; the official docs did not come up). Re-verify when you revisit the note.
 
-- **Resilience4j** offers both the semaphore and the thread-pool bulkhead. Reported defaults: `maxConcurrentCalls` 25 and `maxWaitDuration` 0 (to verify).
-- **Netflix Hystrix**, now in maintenance mode, popularised thread-pool isolation per dependency. Resilience4j's semaphore version is lighter and more common today.
-- **Infrastructure-level bulkheads:** separate pods or deployments per workload, Kubernetes CPU and memory limits, separate connection pools and queues, separate consumer groups. These isolate more strongly than a code-level limit.
-- **Service mesh (Envoy, Istio):** can limit concurrent connections and pending requests per upstream service, with no code changes.
-- **Virtual threads (Java 21):** they make "running out of threads" much less likely, but the dependency can still be overloaded. A concurrency limit toward each dependency is still useful (to verify for your Spring Boot setup).
-- **Decision rule:** use a code-level bulkhead for per-dependency limits with a custom fallback. Use pod and resource isolation for big workloads that must never affect each other. Use both for critical paths.
+- **Confirmed:** Resilience4j offers semaphore and thread-pool bulkheads; the actuator endpoints and metrics above were checked against a running app.
+- **To verify:** Resilience4j default values (reported as 25 concurrent calls and 0 wait); how virtual threads in your Spring Boot version change the picture; service-mesh connection limits for your mesh.
+- **Decision rule:** a code-level bulkhead per dependency with a custom fallback; pod and resource isolation for workloads that must never affect each other; both for critical paths.
 
-## 12. Quick Q&A (for review)
+## 12. Going further
 
-**What problem does a bulkhead solve?** One slow dependency using up all the shared threads, so unrelated features stop working.
-
-**How is it different from a circuit breaker?** A bulkhead limits how many calls run at once. A breaker stops calls after it sees enough failures or slow calls. Use both.
-
-**Why is `maxWaitDuration: 0` a good default?** Waiting callers hold threads. Refusing immediately keeps threads free.
-
-**Does a bulkhead replace a timeout?** No. It limits how many calls wait, not how long each one waits.
-
-**Where else can bulkheads exist besides in code?** Separate pods or deployments, resource limits, separate connection pools, separate consumer groups, and mesh connection limits.
-
-## 13. Interview answer (60 seconds)
-
-> "A bulkhead limits how many concurrent calls go to one dependency, so a slow dependency can only use its own small share of my threads. Extra calls are refused immediately and get a fallback, so unrelated features keep working. I'd use a semaphore bulkhead per dependency, size it from request rate times response time, keep the wait at zero, and watch the rejection count. It works together with timeouts and a circuit breaker, and for stronger isolation I'd separate workloads at the pod level."
-
-## 14. Going further
-
-- Resilience4j documentation: Bulkhead
+- Resilience4j documentation (Bulkhead)
 - Microsoft Azure Architecture Center, "Bulkhead pattern"
-- Michael Nygard, *Release It!* (the "Bulkheads" stability pattern)
+- Michael Nygard, *Release It!* ("Bulkheads")
 
-**Next topics:** Timeouts, retries, backoff and jitter; rate limiting and load shedding.
+**Next:** [Rate limiting and throttling](07-rate-limiting.md) (1.7).
 
 Back to [the index](../README.md) · [Roadmap](../roadmap.md).

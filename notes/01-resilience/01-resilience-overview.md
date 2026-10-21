@@ -3,47 +3,55 @@ title: "Resilience Patterns: The Big Picture"
 tags: [resilience, overview, fault-tolerance, patterns]
 category: resilience
 level: fundamentals
-updated: "2026-10-20"
+updated: "2026-10-21"
 ---
 
 # Resilience Patterns: The Big Picture
 
-**Category:** Resilience · **Level:** Fundamentals · **Last updated:** 2026-10-20
+**Resilience · Step 1.1 · Fundamentals** · Last updated 2026-10-21
 
-> [!NOTE]
-> Read this first. It is the map for the whole resilience track. Each pattern has its own note; this page shows how they relate and in what order to learn them.
+> [!TIP]
+> **In one sentence:** resilience patterns are a small family of independent techniques that stop one slow or broken dependency from taking your whole system down.
+>
+> **Memory hook:** think of a **ship**. Timeouts are the rule "don't wait forever at the dock", retries are "try the radio again", the circuit breaker is "stop calling a port that's on fire", bulkheads are the sealed compartments, and the fallback is the lifeboat.
 
-## In one minute
+Read this first. It is the map for the whole track: what each pattern is for, how they relate, and the order to learn them in.
 
-**Resilience** means your system keeps working, or fails in a controlled way, when something it depends on is slow or broken. There is no single pattern for this. There is a small family of **independent patterns**, each answering a different question. They are usually combined, and none of them is part of another.
+## Where it fits
 
-So, to answer the question directly: **the bulkhead is not part of the circuit breaker.** They are siblings. Libraries like Resilience4j ship them as separate modules that you can use alone or together.
+Step 1.1, the start of the resilience track. Every later note in this folder is one pattern from the family shown here.
 
-## Why it matters for your role
+## 1. The story
 
-- **As an engineer:** you apply these patterns on every call that leaves your service, and you tune and test them.
-- **As an architect:** you decide which patterns are required as a standard, agree the fallback behaviour with the business, and ask in design reviews: "what happens when this dependency is slow, down, or overloaded?"
+ShopFlow's `inventory-service` has a slow database during a sale. It doesn't crash; it just takes 15 seconds to answer. Every checkout request that asks for stock waits, holding a request thread. Within a minute, all threads in `order-service` are waiting. Now even the cart page, which never touches inventory, stops responding. One slow dependency has taken down the shop.
 
-## 1. The problem they all solve
+```mermaid
+flowchart LR
+    I[inventory-service: 15 s answers] --> W[order-service threads all waiting]
+    W --> C[Checkout times out]
+    W --> K[Cart page stops too]
+    K --> X[Whole shop looks down]
+```
 
-Distributed systems fail in partial, messy ways. The dangerous failure is rarely "service is down". It is "service is slow", because slow calls hold your threads and the problem spreads. This is a **cascading failure**. The patterns below are all ways to limit the **blast radius**, which means how far one failure can spread.
+This is a **cascading failure**: a failure that spreads through shared resources. Notice that *slow* was worse than *down*. A dead service fails fast and frees the thread; a slow one traps it.
 
-## 2. The family, one question each
+## 2. The idea
 
-| # | Pattern | The question it answers | Protects against |
-|---|---|---|---|
-| 1 | **Timeout** | How long am I willing to wait for one call? | Calls that never finish |
-| 2 | **Retry** (with backoff and jitter) | Is this failure temporary, so trying again may work? | Short glitches |
-| 3 | **Idempotency** | Is it safe to repeat this request? | Duplicate side effects from retries |
-| 4 | **Circuit breaker** | Has this dependency failed enough that I should stop calling it? | Wasting calls on a broken or slow service |
-| 5 | **Bulkhead** | How many calls may use this dependency at the same time? | One dependency using all my threads |
-| 6 | **Rate limiter / throttling** | How many calls per second will I allow? | Overload, from callers or toward dependencies |
-| 7 | **Load shedding and backpressure** | When overloaded, what do I drop or slow down on purpose? | Collapse under too much traffic |
-| 8 | **Fallback / graceful degradation** | What do I answer when the real answer isn't available? | Total failure when only a part is broken |
+There is no single fix. There is a family of **independent patterns**, each answering one question. They are usually combined, and **none is part of another**: the bulkhead is not part of the circuit breaker, they are siblings.
 
-Every pattern is useful alone, but each has a gap that another one fills.
+| # | Pattern | The question it answers |
+|---|---|---|
+| 1.2 | **Timeout** | How long will I wait for one call? |
+| 1.3 | **Retry** (with backoff and jitter) | Is this failure temporary, so trying again may work? |
+| 1.4 | **Idempotency** | Is it safe to repeat this request? |
+| 1.5 | **Circuit breaker** | Has this dependency failed enough that I should stop calling it? |
+| 1.6 | **Bulkhead** | How many calls may use this dependency at the same time? |
+| 1.7 | **Rate limiter** | How many calls per second will I accept or send? |
+| 1.8 | **Load shedding and backpressure** | When overloaded, what do I drop or slow down? |
+| 1.9 | **Fallback / graceful degradation** | What do I answer when the real answer is missing? |
+| 1.10 | **Testing resilience** | Does any of this work when something really breaks? |
 
-## 3. How they stack on one call
+How they stack on one outgoing call:
 
 ```mermaid
 flowchart LR
@@ -57,85 +65,99 @@ flowchart LR
     B -.->|full: rejected| F
 ```
 
-Read it left to right: a call passes through each layer before it reaches the remote service. Any layer can refuse the call, and the **fallback** decides what the caller gets back.
+A call passes each layer before reaching the remote service. Any layer can refuse it, and the **fallback** decides what the caller gets back. (This order is Resilience4j's default with annotations; other libraries can differ.)
 
-> [!NOTE]
-> The order above is Resilience4j's default when you use its annotations (retry outermost, bulkhead innermost). Other libraries, and your own wrapping code, can use a different order. Check this for your version.
+## 3. Key terms
+
+| Term | Plain meaning |
+|---|---|
+| **Resilience / fault tolerance** | Keep working, or degrade gracefully, despite failures |
+| **Cascading failure** | One failure spreading to others through shared resources |
+| **Blast radius** | How much is affected when one thing fails |
+| **Fail fast** | Refuse or fail at once instead of waiting |
+| **Graceful degradation** | Offer less, but keep the core working |
+| **Retry storm** | Retries multiplying load on a service that is already struggling |
+| **Idempotent** | Safe to do twice with the same result |
+| **Load shedding** | Dropping some requests on purpose to protect the rest |
+| **Backpressure** | Telling senders to slow down |
 
 ## 4. How they depend on each other
 
-- **Timeouts come first.** Every other pattern assumes a call eventually ends. Without a timeout, a retry or a breaker can't even see a hung call.
-- **Retries need idempotency.** Repeating a "charge the card" request is dangerous unless the operation is safe to repeat.
-- **Retries need a breaker.** Retries alone can overload a struggling service (a **retry storm**). The breaker stops them.
-- **The breaker and bulkhead are siblings.** The bulkhead protects your threads in the first seconds. The breaker reacts once a pattern of failures is clear.
-- **Rate limiting and load shedding protect *you*.** The others protect you from your dependencies. These protect you from your callers.
-- **The fallback is shared.** All the patterns that refuse a call need an answer to give back.
+1. **Timeouts come first.** Every other pattern assumes a call eventually ends.
+2. **Retries need idempotency**, or repeating a request can repeat its side effects.
+3. **Retries need a circuit breaker**, or they create retry storms against a dead service.
+4. **The bulkhead and the breaker are siblings.** The bulkhead protects your threads in the first seconds; the breaker reacts once failures pile up.
+5. **Rate limiting and load shedding protect *you***, from your callers. The others protect you from your dependencies.
+6. **Every refusal needs a fallback**, and all of it needs **testing**.
 
-## 5. Notes in this track, in learning order
+## 5. Real-world examples
 
-Step numbers match the [roadmap](../roadmap.md). Finished notes are linked; the rest are planned.
+- **Online banking:** the statement service is slow; with timeouts and a bulkhead, logins and transfers keep working while statements show "temporarily unavailable".
+- **Food delivery:** the restaurant-menu service of one partner fails; a circuit breaker stops calls to it, and the app shows that restaurant as "closed for now" instead of the whole app hanging.
+- **Video streaming:** the recommendations service is overloaded; the home page falls back to a cached "popular now" row, and playback is unaffected.
 
-| Step | Topic | Why in this position | Status |
-|---|---|---|---|
-| 1.1 | This overview | Gives the map | Done |
-| 1.2 | Timeouts | The foundation for all the others | Planned |
-| 1.3 | Retries, backoff and jitter | The simplest reaction to failure | Planned |
-| 1.4 | Idempotency | Makes retries safe | Planned |
-| 1.5 | [Circuit breaker](05-circuit-breaker.md) | Stops retries and calls when a dependency is down | Done |
-| 1.6 | [Bulkhead](06-bulkhead.md) | Limits damage from slow dependencies | Done |
-| 1.7 | Rate limiting and throttling | Protects your own service | Planned |
-| 1.8 | Load shedding and backpressure | Handles real overload | Planned |
-| 1.9 | Fallbacks and graceful degradation | Ties the earlier patterns together | Planned |
-| 1.10 | Testing resilience (chaos engineering) | Proves it works | Planned |
+## 6. Design choices: the baseline
+
+| Every outside call | Add when | Add at the edge |
+|---|---|---|
+| Timeout, retry (idempotent calls only), circuit breaker, fallback | Several dependencies share threads: bulkhead | Rate limiting, load shedding |
+
+Then test it (1.10). Patterns you never saw fail on purpose are assumptions.
+
+## 7. Notes in this area, in learning order
+
+| Step | Topic | Status |
+|---|---|---|
+| 1.1 | This overview | Done |
+| 1.2 | [Timeouts](02-timeouts.md) | Done |
+| 1.3 | [Retries, backoff and jitter](03-retries-backoff-jitter.md) | Done |
+| 1.4 | [Idempotency](04-idempotency.md) | Done |
+| 1.5 | [Circuit breaker](05-circuit-breaker.md) | Done |
+| 1.6 | [Bulkhead](06-bulkhead.md) | Done |
+| 1.7 | [Rate limiting and throttling](07-rate-limiting.md) | Done |
+| 1.8 | [Load shedding and backpressure](08-load-shedding-backpressure.md) | Done |
+| 1.9 | [Fallbacks and graceful degradation](09-fallbacks-graceful-degradation.md) | Done |
+| 1.10 | [Testing resilience (chaos engineering)](10-testing-resilience.md) | Done |
 
 For quick revision, use the [resilience cheat sheet](99-resilience-cheat-sheet.md).
 
-> [!IMPORTANT]
-> In this course, the circuit breaker and bulkhead were learned **before** steps 1.2 to 1.4. That is fine, but it leaves gaps. Steps 1.2 to 1.4 are the next lessons, and they will connect back to the two notes already written.
+## 8. Remember
 
-## 6. Industry terms, so the vocabulary is right
+- **Slow is worse than down.** Slow calls trap threads; that is how failures cascade.
+- **Each pattern answers one question.** They are independent siblings, combined in layers.
+- **Timeouts first**, then retries with idempotency, then the breaker.
+- **Every refusal needs an honest fallback.**
+- **Test failure and recovery on purpose.**
 
-| Term | Meaning |
-|---|---|
-| **Resilience / fault tolerance** | The system keeps working, or degrades gracefully, despite failures |
-| **Stability patterns** | Michael Nygard's name for this family in *Release It!* (includes timeouts, circuit breaker, bulkheads, fail fast) |
-| **Reliability patterns** | Microsoft's grouping in the Azure Architecture Center (includes bulkhead, circuit breaker, retry) |
-| **Cascading failure** | One failure spreading to other parts through shared resources |
-| **Blast radius** | How much is affected when one thing fails |
-| **Fail fast** | Refuse or fail immediately instead of waiting |
-| **Graceful degradation** | Offer less, but keep the core working |
-| **Load shedding** | Dropping some requests on purpose to protect the rest |
-| **Backpressure** | Telling callers to slow down |
-| **Idempotent** | Safe to do more than once with the same result |
-| **Retry storm** | Retries multiplying load on a service that is already struggling |
+## 9. Interview corner
 
-## 7. Industry check
+**15-second answer:** "Resilience patterns stop one bad dependency from spreading failure: timeouts, retries with idempotency, circuit breakers, bulkheads, rate limiting, load shedding and fallbacks, each answering a different question."
+
+**60-second answer:**
+> "The dangerous failure in distributed systems is usually a slow dependency, because slow calls hold threads and the failure cascades. I limit the blast radius in layers. Every outside call gets a timeout; I retry only idempotent calls with backoff and jitter; a circuit breaker stops calling a dependency that keeps failing; a bulkhead limits how many threads one dependency can use; and every refusal returns an honest fallback. At the edges I rate-limit and shed load. Then I test it with fault injection, because untested resilience is an assumption."
+
+**Likely follow-up questions:**
+- **Is a bulkhead part of a circuit breaker?** No. Separate patterns: one limits concurrent calls, the other stops calls after failures.
+- **Which pattern comes first?** Timeouts: the others depend on calls ending.
+- **Why can retries make things worse?** They multiply load on a struggling service; the breaker stops them.
+- **What do rate limiting and load shedding protect?** Your own service, from too much incoming traffic.
+
+**Architect angle:** "I make timeouts, safe retries, a breaker and an honest fallback the default for every outside call, and add bulkheads and shedding where the blast radius justifies them."
+
+## 10. Industry check
 
 > [!NOTE]
-> Last checked: 2026-10-20 by web search. The Microsoft results came from third-party mirrors, not the official pages, and the AWS results covered retries and timeouts but not bulkheads or graceful degradation. Re-verify this section against the official guides when you revisit the note.
+> Checked 2026-10-20 by web search. Re-verify when you revisit the note.
 
-- **Microsoft Azure Architecture Center:** lists bulkhead, circuit breaker and retry among its reliability patterns, together with health endpoint monitoring, saga and compensating transactions.
-- **AWS Well-Architected, Reliability pillar:** recommends retries with exponential backoff and jitter, limiting the number of retries, setting client timeouts, and retrying only idempotent operations. It also treats circuit breakers, throttling and fail-fast behaviour as related patterns.
-- **Nygard, *Release It!*:** the original source of the "stability patterns" vocabulary (timeouts, circuit breaker, bulkheads, fail fast).
-- **Decision rule:** timeouts, retries and a circuit breaker are the baseline for every outside call. Add bulkheads where one dependency could starve the rest. Add rate limiting and load shedding on the edges that face callers.
+- **Confirmed:** the AWS Well-Architected Reliability pillar recommends client timeouts, retries with exponential backoff and jitter, limited retries, and retrying only idempotent operations, and lists circuit breakers and throttling as related patterns. Michael Nygard's *Release It!* is the source of the "stability patterns" vocabulary (timeouts, circuit breaker, bulkheads, fail fast).
+- **To verify:** Microsoft's Azure Architecture Center grouping of bulkhead, circuit breaker and retry as "reliability patterns" (my results came from third-party mirrors, not the official pages); the exact Resilience4j decorator order for your version.
+- **Decision rule:** timeouts, safe retries and a circuit breaker on every outside call; bulkheads where one dependency could starve the rest; rate limiting and shedding on edges facing callers.
 
-## 8. Quick Q&A (for review)
-
-**Is a bulkhead part of a circuit breaker?** No. They are separate patterns that answer different questions and are often used together.
-
-**Which pattern should come first when learning?** Timeouts, because every other pattern depends on a call eventually ending.
-
-**Why do retries need a circuit breaker?** Retries alone can multiply load on a struggling service. The breaker stops them.
-
-**Why do retries need idempotency?** Repeating a request must not repeat its side effects, such as charging a card twice.
-
-**What do rate limiting and load shedding protect?** Your own service from too much incoming traffic.
-
-## 9. Going further
+## 11. Going further
 
 - Michael Nygard, *Release It!*
-- Microsoft Azure Architecture Center, cloud design patterns (reliability section)
 - AWS Well-Architected Framework, Reliability pillar
+- Microsoft Azure Architecture Center, cloud design patterns
 - Resilience4j documentation
 
 Back to [the index](../README.md) · [Roadmap](../roadmap.md).

@@ -1,11 +1,11 @@
 # Learning Progress Snapshot
 - Subject: Resilience patterns (track 1)
 - Goal: Understand and apply resilience patterns as an engineer and decide on them as an architect
-- Status: Paused on 2026-10-20 to start Kafka (track 2)
-- Completed: 1.1 overview, 1.5 circuit breaker, 1.6 bulkhead (notes written, example app built and run, cheat sheet started)
-- Strong areas: not assessed yet (the circuit breaker exercise Q1 to Q4 was not attempted; the user asked for teaching without quizzes)
-- Gaps to revisit: foundations 1.2 timeouts, 1.3 retries with backoff and jitter, 1.4 idempotency were learned out of order (after 1.5 and 1.6)
-- Remaining: 1.2 to 1.4, 1.7 rate limiting, 1.8 load shedding, 1.9 fallbacks, 1.10 testing resilience
-- Environment/setup: Java 21, Maven 3.9, Spring Boot 3.2.4, Resilience4j 2.2.0; example app `resilience-demo` (9 tests passing)
-- Last exercise and result: none reviewed
-- Resume at: 1.2 Timeouts. Best done before Kafka 2.2.8 (error handling) and 2.2.9 (idempotent producer)
+- Status: Done on 2026-10-21 (all ten notes written; Kafka paused meanwhile)
+- Completed: 1.1 overview, 1.2 timeouts, 1.3 retries/backoff/jitter, 1.4 idempotency, 1.5 circuit breaker, 1.6 bulkhead, 1.7 rate limiting, 1.8 load shedding and backpressure, 1.9 fallbacks and graceful degradation, 1.10 testing resilience, plus the cheat sheet
+- Strong areas: not assessed (no exercises attempted; the user prefers teaching without quizzes unless asked)
+- Gaps to revisit: 1.2 to 1.4 and 1.7 to 1.10 are notes only: no example app was built or run for them (circuit breaker and bulkhead have an example app in labs/). Their code samples are untested sketches
+- Environment/setup: Java 21, Maven 3.9, Spring Boot 3.2.4, Resilience4j 2.2.0 (for the existing example app only)
+- Last exercise and result: none
+- Preference recorded 2026-10-21: no demo apps unless the user asks for hands-on practice
+- Next: revise from the cheat sheet; the Quick Q&A in each note is available whenever the user asks for a quiz
