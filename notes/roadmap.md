@@ -29,18 +29,17 @@ You can have several areas open at once. When you switch, the area you leave is 
 
 | Area | Status | Done | Resume at | Notes |
 |---|---|---|---|---|
-| 1 Resilience | Paused | 1.1, 1.5, 1.6 | 1.2 Timeouts | Timeouts, retries and idempotency (1.2 to 1.4) are still to learn. Pick them up any time, ideally before Kafka error handling and the idempotent producer (2.2.8, 2.2.9), which build on them |
-| 2 Messaging, Kafka | Learning | 2.1, 2.2.1 | 2.2.2 The log: topics, partitions and offsets | Fundamentals (2.2.2 to 2.2.6) do not depend on the open resilience topics |
+| 1 Resilience | Done | 1.1 to 1.10 | none | All ten notes are written. Revise from the cheat sheet. Hands-on demo only if you ask |
+| 2 Messaging, Kafka | Learning | 2.1, 2.2.1 to 2.2.6 (fundamentals complete) | 2.2.7 Rebalancing and static membership | Resumed on 2026-10-21 after the resilience notes were finished. Kafka error handling and the idempotent producer (2.2.8, 2.2.9) have their resilience prerequisites in place |
 
 ## Do next
 
 | # | Topic | Step | Why now |
 |---|---|---|---|
-| 1 | Kafka fundamentals | 2.2.2 to 2.2.6 | Topics, partitions, producers, consumers, delivery semantics, replication |
-| 2 | Resilience catch-up: timeouts, retries, idempotency | 1.2 to 1.4 | Fills the foundation gap, and Kafka error handling and exactly-once build on it |
-| 3 | Kafka intermediate | 2.2.7 to 2.2.12 | Rebalancing, error handling, transactions, schemas, ordering, Spring Boot |
-| 4 | Rate limiting, load shedding, fallbacks | 1.7 to 1.9 | Finishes the resilience track |
-| 5 | Kafka advanced | 2.2.13 to 2.2.18 | Retention, streams, Connect, security, monitoring, disaster recovery |
+| 1 | Kafka intermediate | 2.2.7 to 2.2.12 | Rebalancing, error handling, transactions, schemas, ordering, Spring Boot |
+| 2 | Kafka advanced | 2.2.13 to 2.2.18 | Retention, streams, Connect, security, monitoring, disaster recovery |
+| 3 | RabbitMQ series, then choosing a messaging system | 2.3.x, 2.4 | Completes the messaging area |
+| 4 | Design patterns | 3.x | Next track in your order |
 
 ## Tracks
 
@@ -50,18 +49,18 @@ Why: every service you build calls something that will eventually fail. These pa
 | Step | Topic | Role | Status |
 |---|---|---|---|
 | 1.1 | [Resilience patterns: the big picture](01-resilience/01-resilience-overview.md) | Both | Done |
-| 1.2 | Timeouts | Both | Planned |
-| 1.3 | Retries, backoff and jitter | Both | Planned |
-| 1.4 | Idempotency | Both | Planned |
+| 1.2 | [Timeouts](01-resilience/02-timeouts.md) | Both | Done |
+| 1.3 | [Retries, backoff and jitter](01-resilience/03-retries-backoff-jitter.md) | Both | Done |
+| 1.4 | [Idempotency](01-resilience/04-idempotency.md) | Both | Done |
 | 1.5 | [Circuit breaker](01-resilience/05-circuit-breaker.md) | Both | Done |
 | 1.6 | [Bulkhead](01-resilience/06-bulkhead.md) | Both | Done |
-| 1.7 | Rate limiting and throttling | Both | Planned |
-| 1.8 | Load shedding and backpressure | Architect | Planned |
-| 1.9 | Fallbacks and graceful degradation | Both | Planned |
-| 1.10 | Testing resilience (chaos engineering) | Both | Planned |
+| 1.7 | [Rate limiting and throttling](01-resilience/07-rate-limiting.md) | Both | Done |
+| 1.8 | [Load shedding and backpressure](01-resilience/08-load-shedding-backpressure.md) | Architect | Done |
+| 1.9 | [Fallbacks and graceful degradation](01-resilience/09-fallbacks-graceful-degradation.md) | Both | Done |
+| 1.10 | [Testing resilience (chaos engineering)](01-resilience/10-testing-resilience.md) | Both | Done |
 
-> [!IMPORTANT]
-> Steps 1.5 and 1.6 were learned before 1.2 to 1.4. Learn 1.2 to 1.4 next; they will also strengthen the two finished notes.
+> [!NOTE]
+> The whole track is written. Steps 1.5 and 1.6 were written before 1.2 to 1.4, so for the cleanest understanding read the notes in numbered order. The track has notes only, with no demo app; one can be added later if you ask for hands-on practice.
 
 ### 2. Messaging and event-driven design
 Why: events decouple teams and services, but they bring ordering, duplicate and consistency problems.
@@ -75,11 +74,11 @@ Why: events decouple teams and services, but they bring ordering, duplicate and 
 | Step | Topic | Level | Role | Status |
 |---|---|---|---|---|
 | 2.2.1 | [Kafka: the big picture and learning order](02-messaging/02-kafka/01-kafka-overview.md) | Fundamentals | Both | Done |
-| 2.2.2 | The log: topics, partitions and offsets | Fundamentals | Engineer | Planned |
-| 2.2.3 | Producers: keys, partitioning, acks and batching | Fundamentals | Engineer | Planned |
-| 2.2.4 | Consumers and consumer groups | Fundamentals | Both | Planned |
-| 2.2.5 | Offset commits and delivery guarantees | Fundamentals | Both | Planned |
-| 2.2.6 | Brokers, replication and leader election | Fundamentals | Both | Planned |
+| 2.2.2 | [The log: topics, partitions and offsets](02-messaging/02-kafka/02-log-topics-partitions-offsets.md) | Fundamentals | Engineer | Done |
+| 2.2.3 | [Producers: keys, partitioning, acks and batching](02-messaging/02-kafka/03-producers-keys-acks-batching.md) | Fundamentals | Engineer | Done |
+| 2.2.4 | [Consumers and consumer groups](02-messaging/02-kafka/04-consumers-consumer-groups.md) | Fundamentals | Both | Done |
+| 2.2.5 | [Offset commits and delivery guarantees](02-messaging/02-kafka/05-offset-commits-delivery-guarantees.md) | Fundamentals | Both | Done |
+| 2.2.6 | [Brokers, replication and leader election](02-messaging/02-kafka/06-brokers-replication-leader-election.md) | Fundamentals | Both | Done |
 | 2.2.7 | Rebalancing and static membership | Intermediate | Both | Planned |
 | 2.2.8 | Error handling, retries and dead-letter topics | Intermediate | Engineer | Planned |
 | 2.2.9 | Idempotent producer and transactions (exactly-once) | Intermediate | Both | Planned |

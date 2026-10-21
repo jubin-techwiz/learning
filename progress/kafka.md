@@ -1,11 +1,11 @@
 # Learning Progress Snapshot
 - Subject: Apache Kafka, fundamentals to advanced (series 2.2 inside messaging)
 - Goal: Use Kafka confidently as an engineer, and decide when and how to use it as an architect
-- Status: Learning (started 2026-10-20)
-- Completed: 2.1 messaging overview (queues vs logs, four design questions), 2.2.1 Kafka big picture (topic, partition, offset, consumer group, retention)
+- Status: Learning (resumed 2026-10-21 after finishing the resilience notes)
+- Completed: 2.1 messaging overview (queues vs logs, four design questions), 2.2.1 Kafka big picture, 2.2.2 the log, topics, partitions and offsets, 2.2.3 producers (keys, acks, batching, idempotence), 2.2.4 consumers and consumer groups, 2.2.5 offset commits and delivery guarantees, 2.2.6 brokers, replication and leader election; Kafka fundamentals complete (notes only, no demo app). All notes rewritten in the new learning-flow format on 2026-10-21
 - Strong areas: not assessed yet (no exercises attempted; the user prefers teaching without quizzes unless asked)
 - Gaps to revisit: none recorded
-- Environment/setup: Java 21, Maven 3.9; no Kafka cluster or example app set up yet
+- Environment/setup: Java 21, Maven 3.9; no Kafka cluster or example app (user asked for notes only, no demos unless requested)
 - Last exercise and result: none
-- Next lesson: 2.2.2 The log: topics, partitions and offsets
-- Note: 2.2.8 (error handling) and 2.2.9 (idempotent producer) build on resilience topics 1.2 to 1.4, which are paused (see resilience.md)
+- Next lesson: 2.2.7 Rebalancing and static membership (start of intermediate)
+- Note: 2.2.8 (error handling) and 2.2.9 (idempotent producer) build on resilience topics 1.2 to 1.4, which are now written (see resilience.md)

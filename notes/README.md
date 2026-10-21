@@ -16,28 +16,38 @@ Personal reference notes, one per topic, written in simple language. Each note s
 
 ### 01 · Resilience
 
-Start with the overview, which explains how the patterns relate. When you want to revise, use the cheat sheet.
+**Complete (10 of 10 steps).** Start with the overview, which explains how the patterns relate. When you want to revise, use the cheat sheet.
 
 | Step | Note | Status |
 |---|---|---|
 | 1.1 | [Resilience patterns: the big picture](01-resilience/01-resilience-overview.md) | Done |
-| 1.5 | [Circuit Breaker](01-resilience/05-circuit-breaker.md) | Done |
+| 1.2 | [Timeouts](01-resilience/02-timeouts.md) | Done |
+| 1.3 | [Retries, backoff and jitter](01-resilience/03-retries-backoff-jitter.md) | Done |
+| 1.4 | [Idempotency](01-resilience/04-idempotency.md) | Done |
+| 1.5 | [Circuit breaker](01-resilience/05-circuit-breaker.md) | Done |
 | 1.6 | [Bulkhead](01-resilience/06-bulkhead.md) | Done |
-| | [Resilience cheat sheet](01-resilience/99-resilience-cheat-sheet.md) (revision) | Growing |
-
-Planned in this area: timeouts (1.2), retries, backoff and jitter (1.3), idempotency (1.4), rate limiting (1.7), load shedding and backpressure (1.8), fallbacks and graceful degradation (1.9), testing resilience (1.10).
+| 1.7 | [Rate limiting and throttling](01-resilience/07-rate-limiting.md) | Done |
+| 1.8 | [Load shedding and backpressure](01-resilience/08-load-shedding-backpressure.md) | Done |
+| 1.9 | [Fallbacks and graceful degradation](01-resilience/09-fallbacks-graceful-degradation.md) | Done |
+| 1.10 | [Testing resilience (chaos engineering)](01-resilience/10-testing-resilience.md) | Done |
+| | [Resilience cheat sheet](01-resilience/99-resilience-cheat-sheet.md) (revision) | Done |
 
 ### 02 · Messaging
 
-Start with the overview (queues versus logs, and the four questions every design must answer). The Kafka series then goes from fundamentals to advanced.
+In progress (Kafka resumed). Start with the overview (queues versus logs, and the four questions every design must answer). The Kafka series then goes from fundamentals to advanced.
 
 | Step | Note | Status |
 |---|---|---|
 | 2.1 | [Messaging and event-driven design: the big picture](02-messaging/01-messaging-overview.md) | Done |
 | 2.2.1 | [Apache Kafka: the big picture](02-messaging/02-kafka/01-kafka-overview.md) (series index) | Done |
+| 2.2.2 | [The log: topics, partitions and offsets](02-messaging/02-kafka/02-log-topics-partitions-offsets.md) | Done |
+| 2.2.3 | [Producers: keys, partitioning, acks and batching](02-messaging/02-kafka/03-producers-keys-acks-batching.md) | Done |
+| 2.2.4 | [Consumers and consumer groups](02-messaging/02-kafka/04-consumers-consumer-groups.md) | Done |
+| 2.2.5 | [Offset commits and delivery guarantees](02-messaging/02-kafka/05-offset-commits-delivery-guarantees.md) | Done |
+| 2.2.6 | [Brokers, replication and leader election](02-messaging/02-kafka/06-brokers-replication-leader-election.md) | Done |
 | | [Messaging cheat sheet](02-messaging/99-messaging-cheat-sheet.md) (revision) | Growing |
 
-Planned in this area: Kafka fundamentals, intermediate and advanced topics (2.2.2 to 2.2.18), a RabbitMQ series (2.3.x) and a comparison note, "choosing a messaging system" (2.4).
+Planned in this area: the rest of the Kafka series (intermediate and advanced, 2.2.7 to 2.2.18), a RabbitMQ series (2.3.x) and a comparison note, "choosing a messaging system" (2.4).
 
 ### Coming next
 
@@ -62,17 +72,62 @@ notes/
 - **Numbers are paths.** The folder number is the track, the file number is the step (series add one more level), so `01-resilience/05-circuit-breaker.md` is step 1.5 and alphabetical order is learning order.
 - **Every area and series starts with an overview** that doubles as its index, and may end with a cheat sheet (`99-...`).
 - **Levels:** big series are grouped as Fundamentals, Intermediate and Advanced in their overview, and each note records its `level` in the front matter.
-- Every note starts with front matter (`title`, `tags`, plus `category`, `level`, `updated`), then follows the same sections: one-minute summary, where it fits, why it matters for your role (engineer and architect), problem, core idea, how it works, example, mistakes, operating it, example run and results, industry check, Q&A, interview answer.
+- Every note follows the same learning flow (see below).
 - **Notes are self-contained.** Examples and results are written inside each note. Hands-on demo apps live elsewhere and are optional.
 - Plain Markdown that Kenmora renders: callouts (`> [!NOTE]`), Mermaid diagrams, tables and highlighted code. Links between notes are relative. Obsidian-style `[[wikilinks]]` are not used because Kenmora doesn't convert them.
+
+## How each note teaches
+
+Every topic note is written to be understood, remembered and explained in an interview:
+
+| Section | Why it is there |
+|---|---|
+| **In one sentence + memory hook** | The idea and an everyday analogy to remember it by |
+| **Where it fits** | What it builds on and what comes next |
+| **The story** (with a "before" diagram) | A real failure from the running example, so you feel the problem first |
+| **The idea** (with an "after" diagram) | The fix, in plain words |
+| **Key terms** | The vocabulary interviewers expect |
+| **How it works, step by step** | The mechanics |
+| **Real-world examples** | Three short cases from different industries |
+| **Design choices and trade-offs** | When to use it, when not, and how it compares |
+| **Common mistakes** | The gotchas interviewers like to ask about |
+| **In code** | One short snippet and the few settings that matter |
+| **Remember** | Three to five lines worth memorising |
+| **Interview corner** | A 15-second answer, a 60-second answer, follow-up questions and the architect angle |
+| **Industry check** | What was confirmed, what to verify, and the decision rule |
+
+## The running example: ShopFlow
+
+Stories in every note use the same fictional online shop, so topics connect and stick:
+
+```mermaid
+flowchart LR
+    U[Customer app] --> G[API gateway]
+    G --> O[order-service]
+    O --> P[payment-service]
+    O --> I[inventory-service]
+    O -->|events| K[(Kafka)]
+    K --> N[notification-service]
+    K --> A[analytics-service]
+    O --> DB[(MySQL)]
+```
+
+- **order-service** takes orders and publishes `OrderPlaced`.
+- **payment-service** charges cards through an external payment provider.
+- **inventory-service** reserves stock.
+- **notification-service** sends emails and push messages.
+- **analytics-service** builds dashboards from the event stream.
+- Built with Spring Boot, MySQL and Kafka, running on Kubernetes in AWS. Busy days such as a sale bring traffic spikes.
+
+ShopFlow is imaginary; it exists only to give every lesson the same, familiar setting.
 
 ## How to study a topic
 
 1. Read the area's overview to see where the topic fits.
-2. Read the topic note, top to bottom.
-3. Answer its Quick Q&A without looking.
+2. Read the topic note, top to bottom, and look at both diagrams.
+3. Say the 15-second and 60-second answers out loud, then answer the follow-up questions without looking.
 4. Optional: try the example yourself if there is a demo.
-5. Revise later from the cheat sheet, and revisit the note after about 6 months or when you use the topic at work.
+5. Revise later from the cheat sheet and the "Remember" sections, and revisit the note after about 6 months or when you use the topic at work.
 
 ## How they are kept up to date
 
