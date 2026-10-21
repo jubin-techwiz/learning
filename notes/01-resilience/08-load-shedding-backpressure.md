@@ -43,7 +43,7 @@ updated: "2026-10-21"
 | **Backpressure** | A "slow down" signal travelling back to the sender | Prevents unbounded queues | Blocked producer, 429, pull-based consumer | Bounded queue |
 | **Bounded queue** | A queue with a maximum size and maximum wait | Overload becomes visible, not hidden | 50 waiting, 2 s max | Queue |
 | **Worker (request) threads** | The threads that run requests | The real capacity limit | Tomcat `maxThreads` 200 | Bulkhead ([1.6](06-bulkhead.md)) |
-| **Connection backlog (`acceptCount`)** | The operating system's queue of connection requests waiting to be accepted | Often mistaken for a request queue | Tomcat `acceptCount` | `maxConnections` |
+| **Connection backlog (`acceptCount`)** | The operating system's backlog of connection requests, used when Tomcat can't accept more connections because `maxConnections` has been reached | Often mistaken for a queue of requests waiting for busy worker threads | Tomcat `acceptCount` | `maxConnections` |
 
 ## 4. In a real system (ShopFlow)
 

@@ -41,7 +41,7 @@ updated: "2026-10-21"
 | **Deduplication** | Detecting and ignoring repeats | The mechanism behind idempotency | Unique constraint on the key | Idempotent consumer |
 | **Unknown outcome** | After a timeout, you can't tell if the operation happened | The case idempotency exists for | Charge request timed out | Timeout ([1.2](02-timeouts.md)) |
 | **Reconciliation** | Comparing your records with the other system's and fixing differences | How you resolve unknown outcomes | Look up the charge by reference | Durable operation record |
-| **At-least-once delivery** | The system keeps redelivering until the message is acknowledged, so duplicates are possible. Whether a message is actually delivered depends on retention, acknowledgement, retries and recovery policies | Why consumers must deduplicate; not a promise of no loss in every circumstance | Redelivered `OrderPlaced` | At-most-once |
+| **At-least-once delivery** | Delivery can occur zero, one or many times depending on the system and the failure; at-least-once means it keeps retrying until the message is acknowledged, under its stated assumptions (retention, acknowledgement, retries and recovery policies), so duplicates are possible | Why consumers must deduplicate; not a promise of no loss in every circumstance | Redelivered `OrderPlaced` | At-most-once |
 | **Transactional outbox / inbox** | Store an outgoing event (outbox) or a processed message ID (inbox) in the same **database** transaction as the state change | Reliable messaging around a database | `outbox` table | Dual write |
 
 ## 4. In a real system (ShopFlow)
@@ -82,7 +82,7 @@ sequenceDiagram
 **Why the obvious code is wrong.** This looks safe and isn't:
 
 > [!WARNING]
-> **Deliberately defective example. Do not copy it.** It combines a database transaction with an external payment call and is shown only so you can recognise the flaw. Untested sketch.
+> **Deliberately defective example. Do not copy it.** It calls the external payment gateway inside a database transaction. That is unsafe because the charge cannot be rolled back with the transaction: a crash after the charge loses the local record but not the money. The safer design is the durable-operation workflow in "A safer workflow" below. Untested sketch.
 
 ```java
 // DEFECTIVE ON PURPOSE: the external charge is not atomic with this transaction's commit
@@ -224,7 +224,7 @@ Answers are at the end of this note.
 **Likely follow-up questions:**
 - **Which HTTP methods are idempotent?** GET, PUT and DELETE by definition (and HEAD, OPTIONS); POST and PATCH are not by default.
 - **How long do you keep keys?** Longer than any realistic retry or reconciliation window, and inside the provider's key lifetime; then clean up.
-- **Does idempotency give you exactly-once?** Not automatically. At-least-once delivery plus idempotent handling prevents duplicate business effects *within a defined processing boundary* (for example one database transaction, or a provider that honours your key). Across Kafka, a database and an external provider there is no single boundary, so each hop needs its own guarantee, and unknown outcomes still need reconciliation.
+- **Does idempotency give you exactly-once?** Not automatically, and not end to end. At-least-once delivery plus idempotent handling prevents duplicate business effects *within a defined processing boundary* (for example one database transaction, or a provider that honours your key). Across Kafka, a database and an external provider there is no single boundary, so each hop needs its own guarantee, and unknown outcomes still need reconciliation.
 
 **Architect's takeaway:** treat every call with an external side effect as "may be repeated and may have an unknown outcome", and design the operation record, the key and the reconciliation around that.
 
