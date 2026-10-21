@@ -57,6 +57,7 @@ Kafka series complete. Start with the overview (queues versus logs, and the four
 | 2.2.16 | [Security: TLS, SASL and ACLs](02-messaging/02-kafka/16-security-tls-sasl-acls.md) | Done |
 | 2.2.17 | [Monitoring, consumer lag and capacity planning](02-messaging/02-kafka/17-monitoring-lag-capacity.md) | Done |
 | 2.2.18 | [Multi-cluster and disaster recovery](02-messaging/02-kafka/18-multi-cluster-disaster-recovery.md) | Done |
+| | [Messaging glossary](02-messaging/98-messaging-glossary.md) (canonical terms) | Growing |
 | | [Messaging cheat sheet](02-messaging/99-messaging-cheat-sheet.md) (revision) | Growing |
 
 **Kafka series complete (2.2.1 to 2.2.18).** Planned in this area: a RabbitMQ series (2.3.x) and a comparison note, "choosing a messaging system" (2.4).
@@ -67,22 +68,24 @@ Design patterns (track 3) and microservices (4), followed by architecture founda
 
 ## How the notes are organised
 
-```
+```text
 notes/
   roadmap.md
   01-resilience/
     01-resilience-overview.md      area index: how the topics relate and in what order
     05-circuit-breaker.md          topic notes, numbered in learning order
     99-resilience-cheat-sheet.md   one-page revision sheet
-  02-messaging/                    created when the first note is written
+  02-messaging/
     01-messaging-overview.md
+    98-messaging-glossary.md       canonical definitions of the area's terms
+    99-messaging-cheat-sheet.md
     02-kafka/                      a series: one subject taught from fundamentals to advanced
       01-kafka-overview.md
       02-... .md
 ```
 
 - **Numbers are paths.** The folder number is the track, the file number is the step (series add one more level), so `01-resilience/05-circuit-breaker.md` is step 1.5 and alphabetical order is learning order.
-- **Every area and series starts with an overview** that doubles as its index, and may end with a cheat sheet (`99-...`).
+- **Every area and series starts with an overview** that doubles as its index, and ends with a cheat sheet (`99-...`). Areas with many terms also have a glossary (`98-...`), which holds the canonical definitions.
 - **Levels:** big series are grouped as Fundamentals, Intermediate and Advanced in their overview, and each note records its `level` in the front matter.
 - Every note follows the same learning flow (see below).
 - **Notes are self-contained.** Examples and results are written inside each note. Hands-on demo apps live elsewhere and are optional.
@@ -90,23 +93,28 @@ notes/
 
 ## How each note teaches
 
-Every topic note is written to be understood, remembered and explained in an interview:
+The authoring rules live in `LEARNING-STANDARD.md` at the repository root (outside this folder). Every topic note follows the same progression: **problem → simple explanation → industry terms → real example → how it works → failure cases → trade-offs → practice → revision.**
 
 | Section | Why it is there |
 |---|---|
-| **In one sentence + memory hook** | The idea and an everyday analogy to remember it by |
-| **Where it fits** | What it builds on and what comes next |
-| **The story** (with a "before" diagram) | A real failure from the running example, so you feel the problem first |
-| **The idea** (with an "after" diagram) | The fix, in plain words |
-| **Key terms** | The vocabulary interviewers expect |
-| **How it works, step by step** | The mechanics |
-| **Real-world examples** | Three short cases from different industries |
-| **Design choices and trade-offs** | When to use it, when not, and how it compares |
-| **Common mistakes** | The gotchas interviewers like to ask about |
-| **In code** | One short snippet and the few settings that matter |
-| **Remember** | Three to five lines worth memorising |
-| **Interview corner** | A 15-second answer, a 60-second answer, follow-up questions and the architect angle |
-| **Industry check** | What was confirmed, what to verify, and the decision rule |
+| **The concept in simple English** | What it is, why we need it, when you meet it, and a memory hook |
+| **Mental model** | An everyday analogy mapped to the real parts, and where the analogy breaks |
+| **Industry terms** | The vocabulary interviewers and colleagues use, with simple meanings and examples |
+| **In a real system (ShopFlow)** | The business problem first, then how the concept helps and what it costs, plus short cases from other industries ("Elsewhere") |
+| **How it works** | A diagram, the flow step by step, who guarantees what, and a small explained example |
+| **Failure scenarios** | What goes wrong, why, what users see, the fix and its trade-offs |
+| **Architectural decisions** | When to use it, when not, the alternatives, and common mistakes |
+| **Try it yourself** (optional) | A small predict-then-run experiment |
+| **Check your understanding** | Three to five questions; the answers are at the end of the note |
+| **Revision** | Remember, a 15-second and a 60-second explanation, likely interview follow-up questions, the architect's takeaway, the next topic |
+| **Verification and sources** | What was checked, against which versions, and what still needs verifying |
+
+Sections that don't apply are left out and the rest are renumbered, so section numbers can differ slightly between notes.
+
+> [!NOTE]
+> The messaging notes (2.1 to 2.2.18) and resilience notes 1.1 to 1.3 use this format. Resilience notes 1.4 to 1.10 still use the earlier format (story, idea, key terms, interview corner, industry check); their content is complete and is being migrated.
+
+**Notes with a "Try it yourself" experiment:** [2.2.2](02-messaging/02-kafka/02-log-topics-partitions-offsets.md), [2.2.4](02-messaging/02-kafka/04-consumers-consumer-groups.md), [2.2.5](02-messaging/02-kafka/05-offset-commits-delivery-guarantees.md), [2.2.7](02-messaging/02-kafka/07-rebalancing-static-membership.md) and [2.2.13](02-messaging/02-kafka/13-retention-compaction-tiered-storage.md). They need only a local Kafka broker and its command-line tools, and were run on Apache Kafka 4.3.2 on 2026-10-21.
 
 ## The running example: ShopFlow
 
@@ -135,14 +143,21 @@ ShopFlow is imaginary; it exists only to give every lesson the same, familiar se
 
 ## How to study a topic
 
-1. Read the area's overview to see where the topic fits.
-2. Read the topic note, top to bottom, and look at both diagrams.
-3. Say the 15-second and 60-second answers out loud, then answer the follow-up questions without looking.
-4. Optional: try the example yourself if there is a demo.
-5. Revise later from the cheat sheet and the "Remember" sections, and revisit the note after about 6 months or when you use the topic at work.
+1. Read the area's overview to see where the topic fits and what it builds on.
+2. Read the topic note top to bottom. Look at each diagram and say the flow in your own words.
+3. Answer "Check your understanding" before reading the answers at the end.
+4. Optional: do the "Try it yourself" experiment, if the note has one. Predict the result first.
+5. Say the 15-second and 60-second explanations out loud.
+
+## How to revise
+
+- **Next day:** reread the "Remember" list and answer the questions again.
+- **Each week:** revise the area from its cheat sheet; look up any unclear term in the glossary.
+- **Before an interview:** the cheat sheet, then the 60-second explanations and the architect's takeaways of the notes you need.
+- **About every 6 months, or when you use the topic at work:** reread the note and re-check its "Verification and sources" section against current versions.
 
 ## How they are kept up to date
 
 - After each lesson, the learning coach creates or updates the topic's note, the area overview, this page, and the topic's status in [the roadmap](roadmap.md).
-- Each note has an **Industry check** section. Re-verify it before relying on a note.
+- Each note has a **Verification and sources** section (an **Industry check** in the resilience notes). Re-verify it before relying on a note.
 - Progress tracking (completed lessons, weak areas, next lesson) lives separately in `progress/`, outside this folder.

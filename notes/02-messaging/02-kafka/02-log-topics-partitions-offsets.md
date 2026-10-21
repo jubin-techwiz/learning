@@ -9,164 +9,193 @@ updated: "2026-10-21"
 # The Log: Topics, Partitions and Offsets
 
 **Messaging · Kafka · Step 2.2.2 · Fundamentals** · Last updated 2026-10-21
+**Prerequisites:** [Apache Kafka: the big picture](01-kafka-overview.md) (2.2.1)
+
+## 1. The concept in simple English
+
+**What is it?** Kafka stores events in **logs**: files you only add to at the end. A **topic** is split into **partitions**, each its own log, and every event in a partition gets a number called its **offset**.
+
+**Why do we need it?** A single log on one machine can't handle huge volume. Splitting it into partitions spreads the work, and the append-only design makes reading, re-reading and many readers cheap.
+
+**When would I meet it?** Every time you create a topic, choose a key, or wonder why two events arrived in the "wrong" order.
 
 > [!TIP]
-> **In one sentence:** Kafka stores events in append-only logs; a topic is split into partitions, each with its own numbered positions called offsets, and order exists only inside one partition.
->
-> **Memory hook:** a **supermarket with several checkout lanes**. Each lane (partition) serves customers strictly in order, and each receipt has a number in that lane (offset). Your family (same key) always uses the same lane, so you stay together and in order; across lanes, there's no order at all.
+> **Memory hook:** checkout lanes: each lane serves customers in order, receipts are numbered per lane, and a family always uses the same lane.
 
-## Where it fits
+## 2. Mental model: checkout lanes
 
-Step 2.2.2, the first detailed note of the [Kafka series](01-kafka-overview.md). It is the storage model everything else depends on. Next: [producers](03-producers-keys-acks-batching.md) (2.2.3), which write into it, and [consumers](04-consumers-consumer-groups.md) (2.2.4), which read from it.
+| In the analogy | In Kafka |
+|---|---|
+| The supermarket's checkout area | A **topic** |
+| One checkout lane | A **partition** |
+| The receipt number in that lane | The **offset** |
+| A family sticking together | Events with the same **key** |
+| One overloaded lane | A **hot partition** |
 
-## 1. The story
+**Where the analogy breaks:** shoppers leave once served; Kafka events **stay** after being read, until retention removes them, so several readers can process the same lane independently.
 
-ShopFlow sends order events to a topic with three partitions, without a key. For order 42, `OrderPlaced` lands in partition 0 and `OrderCancelled` lands in partition 2. The inventory consumer reading partition 2 happens to be faster, so it processes the cancellation **before** the order exists, ignores it, and then reserves stock for an order that was already cancelled.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Log** | An append-only sequence | Existing events never change, so readers can re-read safely | A partition | Segment |
+| **Topic** | A named stream of one kind of event | Retention, access and naming are set per topic | `orders` | Partition |
+| **Partition** | One independent log within a topic | Unit of order and of parallelism | `orders` partition 2 | Key |
+| **Offset** | An event's number within its partition, from 0 | A position only makes sense with topic and partition | Offset 42 | Committed offset |
+| **Key** | The value hashed to choose the partition | Keeps related events together and in order | Order ID | Partitioner |
+| **Segment** | One of the files a partition is stored in | Retention deletes whole segments | 1 GB segment files | Retention |
+| **Hot partition** | A partition with far more traffic than the others | One consumer falls behind | Most events share one key | Key cardinality |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** The Inventory Service must apply `OrderPlaced` before `OrderCancelled` for the same order; otherwise it reserves stock for an order that no longer exists.
+
+ShopFlow sent order events to a 3-partition topic **without a key**. For order 42, `OrderPlaced` landed in partition 0 and `OrderCancelled` in partition 2. The consumer of partition 2 was faster, so it processed the cancellation first, ignored it ("unknown order"), and then reserved stock.
 
 ```mermaid
 flowchart LR
     O[order-service, no key] --> P0[Partition 0: OrderPlaced 42]
     O --> P2[Partition 2: OrderCancelled 42]
-    P2 -->|read first| I[inventory: cancel for unknown order]
-    P0 -->|read later| I2[inventory: reserves stock anyway]
+    P2 -->|read first| I[inventory-service: cancel for unknown order]
+    P0 -->|read later| I2[inventory-service: reserves stock anyway]
 ```
 
-## 2. The idea
+**How partitions and keys help.** Using the order ID as the **key** sends both events to the same partition, in the order they were produced, so the Inventory Service reads them in order.
 
-A **log** is a file you only add to at the end. Each new event gets the next number, its **offset**. A **topic** is split into **partitions**, and each partition is its own independent log with offsets starting at 0. **Order is guaranteed only inside a partition.**
+**What it costs.** Order is guaranteed only within a partition. The partition count caps parallelism and is expensive to change later.
 
-So send related events with the same **key**. The key is hashed to pick the partition, and the same key always goes to the same partition (as long as the partition count doesn't change). With order 42 as the key, both events land in the same partition, in order.
+**Elsewhere:** ride-hailing keys trip events by trip ID, so "requested", "accepted" and "completed" stay in order; banks key account events by account number, so each account's deposits and withdrawals apply in order while millions of accounts spread across partitions; IoT platforms key readings by device ID and watch for a few chatty devices creating hot partitions.
+
+## 5. How it works
 
 ```mermaid
 flowchart LR
-    O[order-service, key = order ID] --> P1[Partition 1: OrderPlaced 42, OrderCancelled 42]
-    P1 --> I[inventory reads them in order]
-    A[Reader A at offset 1] -.-> P1
-    B[Reader B at offset 0] -.-> P1
+    O[order-service, key = order ID] --> H{hash of key}
+    H --> P1[Partition 1: OrderPlaced 42 at offset 7, OrderCancelled 42 at offset 8]
+    P1 --> A[Reader A at offset 8]
+    P1 --> B[Reader B at offset 5]
 ```
 
-Two readers can read the same partition at different positions, because each keeps its own bookmark. An event's full address is **topic + partition + offset**; "offset 3" alone exists in every partition.
+1. **What starts it:** a producer sends an event, with or without a key.
+2. **Choosing the partition:** with a key, the Java client's default partitioner hashes the key (murmur2) modulo the number of partitions; without a key, the client fills a batch for one partition and then moves to another (the sticky partitioner, since Kafka 2.4), so load spreads evenly over time but consecutive keyless events often share a partition.
+3. **Appending:** the partition's leader adds the event at the end and assigns the next offset.
+4. **Storage:** the partition is a series of segment files on disk; the active segment rolls to a new file at 1 GB by default.
+5. **Removal:** segments older than the retention time (7 days by default) are deleted by a periodic cleanup, read or not.
+6. **Reading:** a reader asks "events from offset N" and moves forward at its own pace. An event's full address is **topic + partition + offset**.
 
-## 3. Key terms
+> [!IMPORTANT]
+> The key-to-partition mapping holds **only while the partition count stays the same**. Other client libraries may hash keys differently (some use CRC32), so mixing libraries can route the same key differently.
 
-| Term | Plain meaning |
-|---|---|
-| **Log** | Append-only sequence; existing entries never change |
-| **Topic** | A named stream of one kind of event |
-| **Partition** | One independent log inside a topic; the unit of order and scale |
-| **Offset** | An event's number inside its partition, starting at 0 |
-| **Key** | The value hashed to choose the partition |
-| **Segment** | One of the files a partition is stored in on disk |
-| **Retention** | How long events are kept, read or not |
-| **Hot partition** | One partition getting far more traffic than the others |
+> [!NOTE]
+> Untested sketch to show the shape. Option names vary by Kafka version.
 
-## 4. How it works, step by step
+```bash
+# Create a topic with 3 partitions (replication factor 1: local learning only)
+kafka-topics.sh --bootstrap-server localhost:9092 --create --topic orders --partitions 3 --replication-factor 1
+kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic orders    # leader and replicas per partition
+```
 
-1. The producer sends an event with a key (or without one).
-2. **With a key:** the key is hashed to choose the partition. The Java client's default is a murmur2 hash, modulo the number of partitions. **Without a key:** events are spread across partitions.
-3. The partition's leader appends the event at the end and gives it the next offset.
-4. On disk, the partition is a series of **segment files**; when the active one reaches 1 GB (the default) a new one starts.
-5. Segments older than the **retention** time (7 days by default) are removed by periodic cleanup, whether or not anyone read them.
-6. Readers ask "give me events from offset N" and move forward at their own pace.
+## 6. Failure scenarios
 
-Kafka is fast largely because it reads and writes sequentially and relies on the operating system's file cache.
+### Related events lose their order
 
-## 5. Real-world examples
+- **What happened?** `OrderCancelled` was processed before `OrderPlaced` (the story above).
+- **Why?** No key, so the events went to different partitions, and Kafka has no order across partitions.
+- **What the business sees:** stock reserved for cancelled orders.
+- **Solutions:** key by the entity whose events must stay in order (the order ID).
+- **Trade-offs:** ordering then exists only per order, which is usually exactly what is needed.
 
-- **Ride-hailing:** trip events keyed by trip ID, so "requested", "accepted", "started" and "completed" for one trip always arrive in order.
-- **Banking:** account events keyed by account number, so deposits and withdrawals for one account are applied in order, while millions of accounts spread across partitions.
-- **IoT sensors:** readings keyed by device ID; a few very chatty devices can create hot partitions, so device keys are chosen and monitored carefully.
+### Partitions are added to a keyed topic
 
-## 6. Design choices and trade-offs
+- **What happened?** During a busy day the team raised the partition count from 3 to 6.
+- **Why?** The partition is "hash modulo partition count", so many keys now map to different partitions; an order's earlier events are in the old partition and its new events in another.
+- **What the business sees:** occasional out-of-order processing for orders in flight.
+- **Solutions:** size partitions up front; for keyed topics, create a new, larger topic and migrate deliberately (see [2.2.11](11-ordering-partition-planning-hot-partitions.md)).
+- **Trade-offs:** more planning up front, or a migration project.
 
-**How many partitions?**
+## 7. Architectural decisions
 
 | More partitions | Fewer partitions |
 |---|---|
-| More consumer parallelism and throughput | Less overhead (files, memory, recovery) |
-| Order split across more lanes | Simpler operations |
+| More consumer parallelism and throughput | Less overhead (files, memory, recovery time) |
+| Order split into more lanes | Simpler operations |
 
-- Size from **peak throughput you need ÷ what one partition handles** (measure it), plus headroom.
-- **You can add partitions later but not remove them**, and **adding them changes where keys land**: a key on partition 1 with 3 partitions may move with 6, breaking per-key order across the change. Plan ahead for keyed topics.
-- **One topic per kind of event** (`order-placed`), not one giant topic, so retention and partitions can be set per kind.
-- **Choose the key from the ordering you need.** A key with few values, or one value used by most events, creates hot partitions.
-- **Retention is a business and cost decision**: how far back must a new reader replay, and how much disk is that?
+- Choose the **key** from the ordering you need; prefer keys with many, evenly used values.
+- Choose **one topic per kind of event** (`order-placed`, or `orders` for one entity's lifecycle), not one topic for everything.
+- **Retention** is a business and cost decision: how far back must replay go, and how much disk does that take?
+- Partitions can be added later but never removed (Kafka doesn't support reducing the count), so size them from measured throughput ([2.2.11](11-ordering-partition-planning-hot-partitions.md)).
 
-## 7. Common mistakes
+**Common mistakes:** expecting order across the whole topic; no key for related events; adding partitions to a keyed topic without a plan; a key with only a handful of values; too few partitions for the consumers you need; treating a topic as a database to query by field; assuming every client library hashes keys the same way.
 
-1. **Expecting order across the whole topic.**
-2. **No key for related events**, so they lose order (the story above).
-3. **Adding partitions to a keyed topic** without planning for the break.
-4. **A key with only a handful of values**, causing hot partitions.
-5. **Too few partitions**, capping how many consumers can work.
-6. **Treating the topic as a database** to query by arbitrary fields.
-7. **Assuming every client hashes keys the same way.**
-
-## 8. In code
+## 8. Try it yourself
 
 > [!NOTE]
-> Untested sketch to show the shape. Command options vary by Kafka version.
+> Status: run on Apache Kafka 4.3.2 (single-node KRaft broker, official binary, macOS) on 2026-10-21; the results below are from that run. It needs a local broker; in Kafka 4.3 `--property` is deprecated in favour of `--reader-property` (producer) and `--formatter-property` (consumer), while older versions only accept `--property`.
+
+**Predict first:** you produce five events with key `A` and five with key `B` to a 3-partition topic. How many partitions will they occupy, and in what order will a reader see key `A`'s events?
 
 ```bash
-kafka-topics.sh --bootstrap-server localhost:9092 \
-  --create --topic orders --partitions 3 --replication-factor 1
-kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic orders
-kafka-console-consumer.sh --bootstrap-server localhost:9092 \
-  --topic orders --partition 0 --offset 0
+kafka-topics.sh --bootstrap-server localhost:9092 --create --topic orders --partitions 3 --replication-factor 1
+
+kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orders \
+  --reader-property parse.key=true --reader-property key.separator=:
+# type: A:1  A:2  B:1  A:3  B:2 ... one per line
+
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning \
+  --formatter-property print.key=true --formatter-property print.partition=true --formatter-property print.offset=true
 ```
 
-```java
-@Bean
-NewTopic orders() {
-    return TopicBuilder.name("orders").partitions(6).replicas(3).build();
-}
-```
+**Observe:** each key stays in one partition with increasing offsets; the two keys may or may not share a partition. In the example run, all ten events (five per key) landed in partition 1, offsets 0 to 9, each key in its order. **Break it:** produce without keys. With 12 events, all 12 went to a single partition (the sticky partitioner fills one batch before moving on); with 200,000 events they spread across the three partitions (63,213, 77,227 and 59,560). Check with `kafka-get-offsets.sh --bootstrap-server localhost:9092 --topic <name>`. **Clean up:** `kafka-topics.sh --bootstrap-server localhost:9092 --delete --topic orders`.
 
-| Setting | What it controls |
-|---|---|
-| Partitions | Parallelism and ordering lanes |
-| Replication factor | Copies of each partition (see 2.2.6) |
-| `log.retention.hours` | How long events are kept (default 168 = 7 days) |
-| `log.segment.bytes` | Segment file size (default 1 GB) |
+## 9. Check your understanding
 
-## 9. Remember
+1. Why is "offset 7" alone not enough to identify an event?
+2. What happens to an event after every consumer group has read it?
+3. A topic keyed by country has 12 partitions, but one consumer is always far behind. What is the likely cause?
+4. You must guarantee the order of all events for one customer. What key do you choose, and what is the cost?
 
-- **Partition = ordered, append-only log; offset = position in one partition.**
-- **Order only inside a partition**; same key, same partition.
+Answers are at the end of this note.
+
+## 10. Revision
+
+**Remember**
+- A partition is an ordered, append-only log; an offset is a position in one partition.
+- **Order only within a partition**; the same key goes to the same partition while the count is unchanged.
 - **Topic + partition + offset** identifies an event.
-- **You can add partitions, not remove them**, and adding moves keys.
 - **Reading doesn't delete**; retention does (7 days by default).
 
-## 10. Interview corner
+**Explain in 15 seconds:** "A topic is split into partitions, each an append-only log with its own offsets; order holds only within a partition, so related events share a key."
 
-**15-second answer:** "A topic is split into partitions, each an append-only log with its own offsets; order holds only inside a partition, so related events share a key."
-
-**60-second answer:**
-> "Kafka stores events in append-only logs. A topic is split into partitions, each its own ordered log with offsets starting at zero, and an event is identified by topic, partition and offset. Order is guaranteed only inside a partition, so I choose a key, like the order ID, that sends related events to the same partition. The partition count caps consumer parallelism; it can be increased but not reduced, and increasing it changes where keys land, so I size it up front from measured throughput. Events are kept for a retention period, seven days by default, whether or not they were read."
+**Explain in 60 seconds:**
+> "Kafka stores events in append-only logs. A topic is split into partitions, each with offsets starting at zero, and an event is identified by topic, partition and offset. Order is guaranteed only within a partition, so I key events by the entity that needs ordering, like the order ID. The partition count caps consumer parallelism, and changing it remaps keys, so I size it up front. Events stay for a retention period, seven days by default, whether or not they were read."
 
 **Likely follow-up questions:**
-- **How do you keep all events of one order in order?** Same key (the order ID), so they share a partition.
-- **What happens if you add partitions?** New events for a key may land on a different partition, breaking order across the change.
-- **What is a hot partition and how do you avoid it?** One overloaded partition from a skewed key; choose keys with many, evenly used values.
-- **Is a Kafka topic a database?** No: it's a log with limited retention, read sequentially.
+- **What happens if you add partitions?** New events for a key may land in a different partition, so order breaks across the change; existing data doesn't move.
+- **Is a Kafka topic a database?** No: it's a log with limited retention, read sequentially by offset.
+- **Why do segments matter?** Retention and compaction work on whole segment files, not on single events.
 
-**Architect angle:** "Partition count and key choice are the expensive-to-change decisions, so I make them from the ordering requirement and measured throughput before go-live."
+**Architect's takeaway:** the key and the partition count are the expensive-to-change decisions; make them from the ordering requirement and measured throughput.
 
-## 11. Industry check
+**Next topic:** [Producers: keys, partitioning, acks and batching](03-producers-keys-acks-batching.md) (2.2.3)
+
+## 11. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 by web search (vendor documentation and archived Kafka configuration pages). Re-verify when you revisit the note.
+> Checked 2026-10-21 by web search. Re-verify when you revisit this note.
 
-- **Confirmed:** `log.retention.hours` defaults to 168 (7 days) and `log.segment.bytes` to 1 GB; segments roll when full and expired ones are removed by periodic cleanup. The Java client's default partitioner uses a murmur2 hash of the key modulo the partition count, so the mapping holds only while the count is unchanged; librdkafka-based clients may use CRC32 instead.
-- **To verify:** that Kafka cannot reduce a topic's partition count (general knowledge my search didn't confirm), and how events without a key are spread in your client version.
-- **Decision rule:** key from the ordering you need, partitions from measured throughput with headroom, one topic per event type, retention from replay and cost needs.
+- **Confirmed:** `log.retention.hours` defaults to 168 (7 days) and `log.segment.bytes` to 1 GB; segments roll when full and expired segments are removed periodically (Kafka configuration documentation and vendor references). The Java client's default partitioner hashes the key with murmur2 modulo the partition count; librdkafka-based clients may use CRC32. Kafka doesn't support reducing a topic's partition count, and adding partitions doesn't move existing data (Kafka operations documentation).
+- **Assumptions and illustrations:** the ShopFlow story; the console commands (not run).
+- **Also confirmed:** keyless records use the sticky partitioner since Kafka 2.4, made strictly uniform in Kafka 3.3 (KIP-794).
+- **To verify:** the `apache/kafka` image tag and tool paths.
+- **Decision rule:** key from the ordering need; partitions from measured throughput with headroom; one topic per event type.
 
-## 12. Going further
+**Sources:** Apache Kafka documentation (design, topic configuration); Jay Kreps, "The Log"; *Kafka: The Definitive Guide*.
 
-- Apache Kafka documentation: design and topic configuration
-- Jay Kreps, "The Log: What every software engineer should know about real-time data's unifying abstraction"
-- *Kafka: The Definitive Guide*
+## Answers
 
-**Next:** [Producers: keys, partitioning, acks and batching](03-producers-keys-acks-batching.md) (2.2.3).
+1. Every partition has its own offsets starting at 0, so offset 7 exists in every partition. You need topic, partition and offset together.
+2. Nothing: it stays until retention (or compaction) removes it. Each group only moves its own offset.
+3. A **hot partition**: a few countries produce most of the traffic, so the partitions holding those keys are overloaded. Choose a key with more, evenly used values, or shard the heavy keys ([2.2.11](11-ordering-partition-planning-hot-partitions.md)).
+4. The customer ID. All that customer's events share one partition and stay in order; the cost is that one very active customer can make that partition hot, and parallelism is per partition.
 
-Back to [the Kafka overview](01-kafka-overview.md) · [Messaging overview](../01-messaging-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).
+Back to [the Kafka overview](01-kafka-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).

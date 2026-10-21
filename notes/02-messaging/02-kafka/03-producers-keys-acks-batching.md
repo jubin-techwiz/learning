@@ -9,110 +9,96 @@ updated: "2026-10-21"
 # Producers: Keys, Partitioning, Acks and Batching
 
 **Messaging · Kafka · Step 2.2.3 · Fundamentals** · Last updated 2026-10-21
+**Prerequisites:** [The log, topics, partitions and offsets](02-log-topics-partitions-offsets.md) (2.2.2); helpful: [retries](../../01-resilience/03-retries-backoff-jitter.md), [idempotency](../../01-resilience/04-idempotency.md)
+
+## 1. The concept in simple English
+
+**What is it?** A **producer** is the client that writes events to Kafka. It picks a partition, groups events into batches, sends them to the right broker and waits for a confirmation called an **acknowledgement (ack)**.
+
+**Why do we need it?** Writing safely and quickly involves choices: how many copies must exist before a write counts, how to avoid duplicates when retrying, and how to batch for speed.
+
+**When would I meet it?** Whenever a service publishes events, for example the Order Service publishing `OrderPlaced`.
 
 > [!TIP]
-> **In one sentence:** a producer is the client that writes events to Kafka. It picks a partition, groups events into batches, and waits for the broker to confirm, and its settings trade safety against speed.
->
-> **Memory hook:** a producer is a **courier**. It sorts parcels by address (the **key** picks the partition), drives full vans instead of one parcel at a time (**batching**), and asks for signatures before leaving (**acks**). `acks=all` means every guard on duty must sign.
+> **Memory hook:** a courier who sorts parcels by address (key → partition), drives full vans (batching) and asks for signatures (acks).
 
-## Where it fits
+## 2. Mental model: a courier
 
-Step 2.2.3. It writes to the [log, topics and partitions](02-log-topics-partitions-offsets.md) from 2.2.2, and it uses three resilience ideas you already know: [timeouts](../../01-resilience/02-timeouts.md), [retries](../../01-resilience/03-retries-backoff-jitter.md) and [idempotency](../../01-resilience/04-idempotency.md). Next: [consumers and consumer groups](04-consumers-consumer-groups.md) (2.2.4).
+| In the analogy | In Kafka |
+|---|---|
+| Sorting parcels by address | The **partitioner** choosing a partition from the key |
+| Waiting until a van is full | **Batching** (`batch.size`, `linger.ms`) |
+| Asking for a signature | **Acks** |
+| Signatures from every depot holding an up-to-date copy | `acks=all`: every **in-sync replica** must have the event |
+| Not delivering the same parcel twice | The **idempotent producer** |
 
-## 1. The story
+**Where the analogy breaks:** a courier knows when a parcel was lost; a producer whose request timed out often **doesn't know** whether the broker stored the event. That uncertainty is why idempotence exists.
 
-On ShopFlow's busiest sale day, `order-service` publishes `OrderPlaced` for every order. Three things go wrong:
+## 3. Industry terms
 
-- A broker restarts. Its partition leader had confirmed some events but crashed before the copies were made. Those orders **never reach** inventory or notifications.
-- After a timeout, the producer retries an event that had in fact arrived. One order is **shipped twice**.
-- The team sends events one at a time, and the producer **can't keep up** with the sale traffic.
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Acks** | Who must confirm a write: nobody (`0`), the leader (`1`), all in-sync replicas (`all`) | Durability versus latency | `acks=all` | `min.insync.replicas` |
+| **In-sync replicas (ISR)** | Copies fully caught up with the leader | Only they count for `acks=all` | 2 of 3 in sync | Replication ([2.2.6](06-brokers-replication-leader-election.md)) |
+| **`min.insync.replicas`** | In-sync copies required for an `acks=all` write | Makes `acks=all` meaningful | 2 with replication factor 3 | Acks |
+| **Batching / linger** | Grouping events per partition; waiting briefly to fill a batch | Throughput for a few milliseconds | `linger.ms=10` | Compression |
+| **Idempotent producer** | The broker drops duplicates caused by producer retries | Safe retries, order kept | `enable.idempotence=true` | Transactions ([2.2.9](09-idempotent-producer-transactions.md)) |
+| **Delivery timeout** | Time limit for a send, including all retries | When the producer gives up | `delivery.timeout.ms` | `request.timeout.ms` |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** Every `OrderPlaced` must reach Kafka exactly as the Order Service intended: not lost, not duplicated, not reordered, and fast enough for a sale day.
+
+On ShopFlow's busiest day: a broker restart lost events that the leader had confirmed but not yet copied (they used `acks=1`); a retry after a timeout duplicated an event that had in fact arrived (an old client configuration had idempotence switched off); and sending one event at a time couldn't keep up.
 
 ```mermaid
 sequenceDiagram
     participant O as order-service
     participant L as Leader broker
     participant F as Follower broker
-    O->>L: OrderPlaced (acks=1)
+    O->>L: OrderPlaced, acks=1
     L-->>O: ok, stored
     Note over L: crashes before F copies the event
     F->>F: becomes the new leader
-    Note over F: the event is not here, so it is lost
+    Note over F: the event is not here: lost
 ```
 
-## 2. The idea
+**How producer settings help.** `acks=all` with `min.insync.replicas=2` means an event is confirmed only after two copies exist; idempotence lets the broker drop retried duplicates; batching and compression raise throughput.
 
-The producer has three dials, and each fixes one of those problems.
+**What it costs.** A few milliseconds more latency per event, and writes that **fail with an error** when too few replicas are in sync (which is the safe behaviour).
 
-**Where:** the **key** decides the partition. Use the order ID as the key, and all events for one order stay together and in order.
+**Elsewhere:** a bank uses the safe profile for payment events, keyed by account ID; a ride-hailing app sends driver locations every few seconds with `acks=1`, larger batches and compression, because the next update replaces a lost one; a clickstream pipeline sends without a key so events spread evenly, with heavy batching and compression.
 
-**How safe:** **acks** decides who must confirm before the send counts as done. With `acks=all`, the event must be copied to the in-sync replicas first, so a single broker crash can't lose it. **Idempotence** lets the broker drop duplicates that retries create.
-
-**How fast:** events are **batched** per partition, optionally **compressed**, and sent together. A few milliseconds of waiting buys much more throughput.
+## 5. How it works
 
 ```mermaid
 flowchart LR
     A[send key value] --> S[Serializer]
-    S --> P[Partitioner: key picks partition]
+    S --> P[Partitioner]
     P --> B0[Batch for partition 0]
     P --> B1[Batch for partition 1]
     B0 --> T[Sender thread]
     B1 --> T
     T --> L[Partition leaders]
     L --> R[Copied to in-sync replicas]
-    R -->|ack| C[Callback: success or error]
+    R -->|ack| C[Callback or future: success or error]
 ```
 
-## 3. Key terms
+1. **What starts it:** your code calls `send`. It normally returns quickly, but it can **block for up to `max.block.ms` (default 60 s)** if the producer's buffer is full or the topic's metadata isn't available yet.
+2. The record is serialised and the partitioner picks its partition.
+3. It waits in that partition's batch until the batch is full or `linger.ms` passes.
+4. A background sender thread sends the batch to the partition **leader**, which appends it; followers copy it.
+5. **On success:** the leader acknowledges according to `acks`; your callback or future reports the partition and offset.
+6. **On failure:** the producer retries until `delivery.timeout.ms` (2 minutes by default) runs out, then reports an error to the callback. If you ignore the callback, the failure is invisible.
 
-| Term | Plain meaning |
+**Who guarantees what**
+
+| Layer | Responsible for |
 |---|---|
-| **Record** | One event: key, value, timestamp |
-| **Partitioner** | Chooses the partition, by hashing the key if there is one |
-| **Batch** | Events for one partition sent together |
-| **Linger** | How long to wait for a batch to fill (`linger.ms`) |
-| **Acks** | Who must confirm the write: nobody, the leader, or all in-sync replicas |
-| **In-sync replicas (ISR)** | The copies of a partition that are up to date with the leader |
-| **`min.insync.replicas`** | The minimum number of in-sync copies needed for an `acks=all` write to succeed |
-| **Idempotent producer** | The broker removes duplicates caused by retries |
-| **Delivery timeout** | The time limit for a send, including all its retries |
-
-## 4. How it works, step by step
-
-1. Your code calls `send`. It **returns at once**; the result comes later in a callback or future.
-2. The record is serialised, and the partitioner picks its partition.
-3. It waits in that partition's batch until the batch is full or the linger time passes.
-4. A background sender thread sends the batch to the partition's **leader** broker.
-5. The leader writes it, and followers copy it.
-6. The leader confirms according to `acks`. If something fails, the producer retries until the delivery timeout runs out, then reports an error to your callback.
-
-## 5. Real-world examples
-
-- **Payments (banking):** every payment event matters. Use the safe profile (`acks=all`, idempotence) and the account ID as the key, so one account's payments stay in order.
-- **Ride-hailing driver locations:** each car sends its position every few seconds. Losing one update is harmless because the next one arrives soon, so `acks=1`, more batching and compression give speed. The driver ID is the key, so each car's positions stay in order.
-- **Website clickstream for analytics:** huge volume, and order between users doesn't matter. Send without a key so events spread evenly, and use heavy batching and compression to save network and disk.
-
-## 6. Design choices and trade-offs
-
-| Profile | Settings | Choose it for | It costs |
-|---|---|---|---|
-| **Fire and forget** | `acks=0` | Data you can lose (debug logs) | Silent loss |
-| **Balanced** | `acks=1` | High-volume, low-value events | Loss if a leader crashes at the wrong moment |
-| **Safe** | `acks=all`, replication factor 3, `min.insync.replicas=2`, idempotence on | Orders, payments, anything that matters | More latency; writes fail when two replicas are down |
-
-With the safe profile, one broker can be down and writes still succeed without losing data. If too few replicas are in sync, the producer gets an **error instead of a silent loss**, which is what you want.
-
-**Batching versus latency:** a larger `linger.ms` and batch size raise throughput but add a few milliseconds per event. Real-time features lean towards low linger; bulk pipelines lean towards high.
-
-## 7. Common mistakes
-
-1. **Never checking the send result**, so failures disappear.
-2. **`acks=1` for business events**, then losing some during a broker restart.
-3. **`acks=all` with `min.insync.replicas=1`**: it looks safe, but only one copy may be confirmed.
-4. **No key where order matters**, so one order's events land on different partitions.
-5. **Retries without idempotence**, causing duplicates or reordering.
-6. **A new producer per message.** Producers are thread-safe, so create one and share it.
-
-## 8. In code
+| Broker | Storing the event on the in-sync replicas required by `acks` and `min.insync.replicas`; dropping retried duplicates when idempotence is on |
+| Producer client | Batching, retrying within the delivery timeout, reporting the result |
+| Framework (Spring Kafka) | `KafkaTemplate` wraps the producer and returns a future |
+| Application | Handling send failures; storing critical events durably first if they must never be lost (transactional outbox) |
 
 > [!NOTE]
 > Untested sketch to show the shape. Property names can differ between versions.
@@ -121,67 +107,110 @@ With the safe profile, one broker can be down and writes still succeed without l
 spring:
   kafka:
     producer:
-      acks: all
-      compression-type: lz4
+      acks: all                       # wait for all in-sync replicas
+      compression-type: lz4           # smaller batches on the network and disk
       properties:
-        enable.idempotence: true
-        linger.ms: 10
+        enable.idempotence: true      # retried duplicates are dropped by the broker
+        linger.ms: 10                 # wait up to 10 ms to fill a batch
 ```
 
 ```java
-kafkaTemplate.send("orders", orderId, orderJson)
+kafkaTemplate.send("orders", orderId, orderJson)          // key = order ID: same partition, same order
     .whenComplete((result, error) -> {
-        if (error != null) { /* record it, alert, or keep it for a later retry */ }
+        if (error != null) { /* record, alert, or keep for a later retry: never ignore */ }
     });
 ```
 
-| Setting | What it controls |
-|---|---|
-| `acks` | Who must confirm a write |
-| `min.insync.replicas` (topic) | How many copies `acks=all` really needs |
-| `enable.idempotence` | Duplicate-free retries, order preserved |
-| `linger.ms` | Wait for batches to fill (default 0 up to Kafka 3.9, 5 ms from 4.0) |
-| `compression.type` | Smaller batches over the network and on disk |
+## 6. Failure scenarios
 
-## 9. Remember
+### Confirmed event lost after a broker failure
 
-- `send` is asynchronous: **always handle the result.**
-- **The key picks the partition**, and order exists only inside a partition.
+- **What happened?** The leader confirmed the event and crashed before followers copied it.
+- **Why?** `acks=1` waits for the leader only.
+- **What the business sees:** some orders never reach inventory, payment or email.
+- **Solutions:** `acks=all`, replication factor 3, `min.insync.replicas=2`.
+- **Trade-offs:** slightly higher latency; with two replicas down, writes are refused instead of risked.
+
+### Duplicate event after a retry
+
+- **What happened?** A request timed out, the producer retried, and the broker stored the event twice.
+- **Why?** The first attempt had succeeded; the acknowledgement was lost.
+- **What the business sees:** duplicate processing downstream, such as two emails.
+- **Solutions:** the idempotent producer (on by default since Kafka 3.0 unless conflicting settings are used; set it explicitly anyway); idempotent consumers as the second line of defence.
+- **Trade-offs:** negligible for idempotence; it does not remove duplicates created by your own application re-sending a new record.
+
+### Send failed and nobody noticed
+
+- **What happened?** The delivery timeout expired during a broker outage; the error went to an unhandled callback.
+- **Why?** `send` is asynchronous; failures arrive later.
+- **What the business sees:** silently missing events.
+- **Solutions:** always handle the result; for critical events use a **transactional outbox** so the event is stored in the database first and published reliably ([2.2.15](15-kafka-connect-cdc.md)).
+- **Trade-offs:** more code or an outbox table and relay.
+
+## 7. Architectural decisions
+
+| Profile | Settings | Choose for | Costs |
+|---|---|---|---|
+| Fire and forget | `acks=0` | Data you can lose (debug logs) | Silent loss |
+| Balanced | `acks=1` | High-volume, low-value events | Loss if a leader fails at the wrong moment |
+| **Safe** | `acks=all`, replication factor 3, `min.insync.replicas=2`, idempotence | Business events | More latency; writes fail when two replicas are down |
+
+- Make the safe profile the **platform default**, and relax it per event type only with a reason.
+- **Batching:** real-time features lean towards small `linger.ms`; bulk pipelines towards larger batches and compression.
+- **Share one producer** per application; it is thread-safe, and one per message is slow and wasteful.
+
+**Common mistakes:** never checking the send result; `acks=1` for business events; `acks=all` with `min.insync.replicas=1`; no key where order matters; retries without idempotence; a new producer per message.
+
+## 8. Check your understanding
+
+1. With `acks=all`, replication factor 3 and `min.insync.replicas=1`, how many copies must exist before a write is confirmed?
+2. What happens to a `send` call if the producer's buffer is full during a broker outage?
+3. The Order Service logs no errors, yet some orders never reach Kafka. What is the most likely cause in the code?
+4. For ride-hailing location updates every few seconds, would you choose the safe profile? Why or why not?
+
+Answers are at the end of this note.
+
+## 9. Revision
+
+**Remember**
+- `send` is asynchronous and can block up to `max.block.ms`; **always handle the result**.
+- **The key picks the partition**; order exists only within a partition.
 - **Safe profile:** `acks=all` + replication factor 3 + `min.insync.replicas=2` + idempotence.
 - `acks=all` is only as strong as `min.insync.replicas`.
-- **Batching trades milliseconds for throughput.**
+- Batching trades milliseconds for throughput.
 
-## 10. Interview corner
+**Explain in 15 seconds:** "A producer picks a partition by key, batches events and sends them to the partition leader; acks decide how many replicas must confirm, so I use acks=all with idempotence for business events."
 
-**15-second answer:** "A producer picks a partition by key, batches events, and sends them to the partition leader; acks decide how many replicas must confirm, so I use acks=all with idempotence for important data."
-
-**60-second answer:**
-> "A Kafka producer serialises each event, picks a partition by hashing the key, and batches events per partition before sending them to the partition leader, asynchronously, with the result in a callback. Durability is set by acks: for business events I use acks=all with replication factor 3 and min.insync.replicas 2, so one broker can fail without losing data, and idempotence so retries can't duplicate or reorder. Batching and compression raise throughput for a few milliseconds of delay. I always handle the send result, and for critical events I'd add a transactional outbox."
+**Explain in 60 seconds:**
+> "A Kafka producer serialises each event, picks a partition by hashing the key, and batches events per partition before sending them to the leader. The send is asynchronous, so the result comes in a callback, and it can block when the buffer is full. Durability is set by acks: for business events I use acks=all with replication factor 3 and min.insync.replicas 2, so one broker can fail without losing confirmed data, and idempotence so retries don't duplicate or reorder. The producer can't make an event durable if the application ignores send failures, so critical events go through a transactional outbox."
 
 **Likely follow-up questions:**
-- **What happens when `min.insync.replicas` can't be met?** The write is rejected and the producer gets an error, instead of the data being stored with too few copies.
-- **Why not use `acks=all` everywhere?** It adds latency, and writes fail when too many replicas are down. For data you can lose, faster settings are a valid choice.
-- **How does the idempotent producer avoid duplicates?** Each producer gets an ID and numbers its events per partition; the broker drops a number it has already written.
-- **How do you make sure an order event is never lost end to end?** Safe producer settings, handling the send result, a transactional outbox for the database-plus-event case, and consumers that commit only after processing (2.2.5).
-- **How do you keep events for one order in order?** Use the order ID as the key, and keep idempotence on so retries don't reorder.
+- **What happens when `min.insync.replicas` can't be met?** The write is refused with an error instead of being stored with too few copies.
+- **How does the idempotent producer avoid duplicates?** Each producer has an ID and numbers its batches per partition; the broker drops a sequence number it has already written.
+- **How do you make sure an order event is never lost end to end?** Safe producer settings, handled send results, an outbox for the database-plus-event case, and consumers that commit only after processing ([2.2.5](05-offset-commits-delivery-guarantees.md)).
 
-**Architect angle:** "I pick the producer profile per event type from the cost of losing it versus the cost of delay, and I make the safe profile the platform default."
+**Architect's takeaway:** choose the producer profile per event type from the cost of losing it versus the cost of delay, and make the safe profile the default.
 
-## 11. Industry check
+**Next topic:** [Consumers and consumer groups](04-consumers-consumer-groups.md) (2.2.4)
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 by web search. Re-verify when you revisit the note.
+> Checked 2026-10-21 by web search. Re-verify when you revisit this note.
 
-- **Confirmed:** the safe baseline `acks=all`, replication factor 3, `min.insync.replicas=2`, and that writes fail with an error when the minimum can't be met (Red Hat and Confluent documentation). The idempotent producer uses a producer ID and sequence numbers, and keeps order with up to 5 in-flight requests. `linger.ms` defaults to 0 up to Kafka 3.9 and 5 ms from Kafka 4.0 (KIP-1030 and a version table).
-- **To verify** against the Apache Kafka producer configuration for your version: the default `acks` and idempotence settings and the version they changed in (reported as 3.0), the default `batch.size` and `delivery.timeout.ms`, and how events without a key are spread across partitions.
-- **Decision rule:** safe profile for business events, faster profiles only for data you can lose, and always handle the send result.
+- **Confirmed:** the safe baseline `acks=all`, replication factor 3, `min.insync.replicas=2`, and writes failing with an error when the minimum can't be met (Red Hat and Confluent documentation); the idempotent producer uses a producer ID and sequence numbers and keeps order with up to 5 in-flight requests; `linger.ms` defaults to 0 up to Kafka 3.9 and 5 ms from 4.0 (KIP-1030); `max.block.ms` defaults to 60 s and bounds how long `send` waits for buffer space and metadata; since Kafka 3.0 (KIP-679) the producer defaults are `acks=all` and `enable.idempotence=true`, but a bug in early 3.x releases (KAFKA-13598) left idempotence off unless set explicitly, and Kafka Connect disables idempotence for its producers by default (Apache Kafka 3.0 and 3.1 upgrade notes).
+- **Assumptions and illustrations:** the ShopFlow story; the code (not run).
+- **To verify:** the exact releases that fixed KAFKA-13598, if you run an early 3.x client (set `enable.idempotence=true` explicitly to be safe).
+- **Also confirmed:** `batch.size` defaults to 16,384 bytes and `delivery.timeout.ms` to 120,000 ms; keyless records use a sticky partitioner since Kafka 2.4, made strictly uniform in 3.3 (KIP-794) (Apache Kafka producer configuration; KIP-794).
+- **Decision rule:** safe profile for business events; faster profiles only for data you can lose; always handle the send result.
 
-## 12. Going further
+**Sources:** Apache Kafka producer configuration and 3.0 upgrade notes; KIP-679; KIP-1030; Confluent "Optimize clients for durability"; *Kafka: The Definitive Guide*.
 
-- Apache Kafka documentation: producer configuration and delivery semantics
-- KIP-1030, "Change constraints and default values for various configurations"
-- Neha Narkhede, Gwen Shapira and Todd Palino, *Kafka: The Definitive Guide*
+## Answers
 
-**Next:** [Consumers and consumer groups](04-consumers-consumer-groups.md) (2.2.4).
+1. One: with `min.insync.replicas=1`, `acks=all` can be satisfied by the leader alone if the followers are out of sync, so it can behave like `acks=1`.
+2. It blocks for up to `max.block.ms` (60 s by default) waiting for buffer space, then throws an exception if none becomes available.
+3. The send results are ignored: failures after the delivery timeout go to a callback or future nobody checks.
+4. Probably not. A lost location update is replaced seconds later, so `acks=1`, larger batches and compression give better speed and cost; the key (driver ID) still keeps each driver's updates in order.
 
-Back to [the Kafka overview](01-kafka-overview.md) · [Messaging overview](../01-messaging-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).
+Back to [the Kafka overview](01-kafka-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).

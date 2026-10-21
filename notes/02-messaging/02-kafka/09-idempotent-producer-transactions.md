@@ -9,19 +9,46 @@ updated: "2026-10-21"
 # Idempotent Producer and Transactions (Exactly-Once)
 
 **Messaging · Kafka · Step 2.2.9 · Intermediate** · Last updated 2026-10-21
+**Prerequisites:** [Producers](03-producers-keys-acks-batching.md) (2.2.3), [Offset commits](05-offset-commits-delivery-guarantees.md) (2.2.5)
+
+## 1. The concept in simple English
+
+**What is it?** Kafka's **exactly-once** support has two parts: the **idempotent producer**, which stops duplicates caused by retries, and **transactions**, which make "write these output events" and "mark these input events as done" happen together or not at all.
+
+**Why do we need it?** A service that reads from Kafka and writes back to Kafka can crash between writing its output and committing its input offset, producing duplicate output on restart.
+
+**When would I meet it?** Stream processing pipelines (topic in, topic out), Kafka Streams applications, and design discussions where someone says "exactly once".
 
 > [!TIP]
-> **In one sentence:** Kafka's exactly-once combines an idempotent producer (no duplicates from retries) with transactions (outputs and consumed offsets saved together, all or nothing), and it only covers work that reads from Kafka and writes back to Kafka.
->
-> **Memory hook:** a **bank transfer**. Taking money from one account and adding it to another must happen together or not at all. A Kafka transaction does the same with "write my output events" and "mark the input as done". And the bank cancels any old cheque book once a new one is issued (fencing old producers).
+> **Memory hook:** a bank transfer: debit and credit together or not at all, and the old cheque book is cancelled when a new one is issued.
 
-## Where it fits
+## 2. Mental model: a bank transfer
 
-Step 2.2.9 of the [Kafka series](01-kafka-overview.md). It builds on the idempotent setting from [producers](03-producers-keys-acks-batching.md) (2.2.3), [offset commits](05-offset-commits-delivery-guarantees.md) (2.2.5) and [idempotency](../../01-resilience/04-idempotency.md) in the resilience track. Next: [schemas and evolution](10-schemas-evolution.md) (2.2.10).
+| In the analogy | In Kafka |
+|---|---|
+| Debit one account, credit another | Write output events, commit input offsets |
+| "Both or neither" | A **transaction** |
+| Cancelling the old cheque book | **Fencing** an older producer with the same `transactional.id` |
+| Only completed transfers on your statement | Consumers with **`read_committed`** |
 
-## 1. The story
+**Where the analogy breaks:** a bank transfer stays inside one bank. A Kafka transaction stays **inside Kafka**: a database write or an email sent in the middle is not part of it.
 
-ShopFlow's `stock-reservation` service reads `OrderPlaced` from Kafka and writes `StockReserved` back to Kafka. It sends the output, then commits the input offset. One day it crashes between the two: on restart it reads the order again and writes **a second `StockReserved`**. Another time, an instance freezes in a long garbage-collection pause; the group gives its partitions to a new instance, then the frozen one wakes up and **keeps writing** as a "zombie". Downstream, stock is reserved twice.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Exactly-once semantics (EOS)** | Each input's effect appears once in the output | Within Kafka only | Kafka Streams `exactly_once_v2` | Effectively once |
+| **Idempotent producer** | The broker drops duplicates from producer retries | Safe retries | `enable.idempotence=true` | Producer ID, sequence numbers |
+| **Transaction** | Writes and offset commits made visible together | No partial results | Output plus offsets | Commit, abort |
+| **`transactional.id`** | A stable name for a transactional producer | Enables fencing across restarts | `stock-reservation-0` | Epoch |
+| **Fencing** | Rejecting an older producer with the same ID | Stops "zombie" instances writing | `ProducerFencedException` | Epoch |
+| **`read_committed`** | Consumers see only committed transactions | Hides aborted output | Downstream consumer setting | `read_uncommitted` |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** The stock-reservation pipeline reads `OrderPlaced` and writes `StockReserved`. Each order must produce exactly one reservation event, even when instances crash or are replaced.
+
+It crashed after writing `StockReserved` but before committing the input offset; on restart it read the order again and wrote a second reservation. Another time, an instance froze in a long garbage-collection pause, was replaced, then woke up and kept writing as a **zombie**.
 
 ```mermaid
 sequenceDiagram
@@ -35,155 +62,159 @@ sequenceDiagram
     Note over K: duplicate reservation downstream
 ```
 
-## 2. The idea
+**How transactions help.** Output and input offsets are committed in one transaction; a crash aborts it, so nothing half-done becomes visible. A stable `transactional.id` lets Kafka fence the zombie.
 
-Make "write the outputs" and "commit the input offset" **one atomic step**: a Kafka **transaction**. Either both happen, or neither. If the service crashes in the middle, the transaction is aborted, and consumers reading with **`read_committed`** never see the half-done output.
+**What it costs.** Output is visible only when the transaction commits (extra latency), more complex code, and it covers nothing outside Kafka.
 
-Give each producer a stable **`transactional.id`**. When a new instance starts with that ID, Kafka bumps an **epoch** and **fences** the old one: a zombie that wakes up gets an error instead of writing duplicates.
+**Elsewhere:** a Kafka Streams app sums transactions per account into a balance topic with `exactly_once_v2`, so a crash never double-counts; a currency-conversion pipeline uses transactions so restarts don't duplicate converted prices; a team that needs results in PostgreSQL skips Kafka transactions and instead upserts by event ID, storing the offset in the same database transaction.
+
+## 5. How it works
 
 ```mermaid
 sequenceDiagram
-    participant S as stock-reservation (transactional)
+    participant S as stock-reservation, transactional
     participant K as Kafka
     S->>K: begin transaction
     S->>K: write StockReserved 42
     S->>K: add input offset 43 to the transaction
     S->>K: commit transaction
     Note over K: output and offset become visible together
-    Note over S,K: crash before commit means abort: nothing visible, the input is read again cleanly
+    Note over S,K: on error: abort, then rewind the consumer to its committed offsets and process again
 ```
 
-## 3. Key terms
-
-| Term | Plain meaning |
-|---|---|
-| **Exactly-once semantics (EOS)** | Each input's effect appears once in the output, even with failures |
-| **Idempotent producer** | The broker drops duplicates caused by producer retries |
-| **Transaction** | A group of writes (and offset commits) that become visible all together or not at all |
-| **`transactional.id`** | A stable name for a transactional producer, kept across restarts |
-| **Epoch / fencing** | A counter that lets Kafka reject an older ("zombie") producer with the same ID |
-| **`read_committed`** | Consumer mode that only sees committed transactions |
-| **Consume-process-produce** | Read from topics, transform, write to topics: the pattern transactions protect |
-
-## 4. How it works, step by step
-
 1. **`initTransactions()`**: registers the `transactional.id`, completes any unfinished transaction from a previous instance, and fences older producers with the same ID.
-2. **`beginTransaction()`**.
-3. **Consume** a batch and **process** it.
-4. **Send** the output events.
-5. **`sendOffsetsToTransaction(...)`**: add the consumed offsets to the same transaction (instead of a normal commit).
-6. **`commitTransaction()`**: outputs and offsets become visible together. On error, **`abortTransaction()`**, and the input will be read again.
-7. Downstream consumers use **`isolation.level=read_committed`**, so they skip aborted data and only see committed transactions.
+2. **`beginTransaction()`**, then consume and process a batch.
+3. **Send** the output events.
+4. **`sendOffsetsToTransaction(...)`** adds the consumed offsets to the same transaction (instead of a normal commit).
+5. **On success:** `commitTransaction()`; outputs and offsets become visible together.
+6. **On failure:** `abortTransaction()`, then **reset the consumer to its last committed offsets** before polling again. Aborting does not move the consumer back by itself; without the reset, the aborted batch would be skipped.
+7. Downstream consumers use **`isolation.level=read_committed`** to skip aborted data. The default is `read_uncommitted`, so this must be set explicitly.
 
-**Kafka Streams** does all of this with one setting: `processing.guarantee=exactly_once_v2`.
+Kafka Streams does all of this with `processing.guarantee=exactly_once_v2`.
 
 > [!IMPORTANT]
-> Exactly-once covers only the **read from Kafka, write to Kafka** loop. It does **not** cover a database write, an email or an HTTP call made in the middle. Those still need idempotency (or the transactional outbox).
+> Exactly-once covers only **consume from Kafka → process → produce to Kafka**. A database write, an email or an HTTP call made during processing is **not** covered; those still need idempotency or the transactional outbox.
 
-## 5. Real-world examples
+**Who guarantees what**
 
-- **Financial aggregations:** a Kafka Streams app sums transactions per account into a balance topic with exactly-once, so a crash never double-counts a payment.
-- **Currency conversion pipelines:** an app reads prices in one currency and writes converted prices to another topic; transactions stop duplicates when instances restart or rebalance.
-- **Writing to a database:** a team needs results in PostgreSQL, so Kafka transactions don't help; instead they upsert by event ID and store the offset in the same database transaction.
-
-## 6. Design choices and trade-offs
-
-| Need | Use | Cost |
-|---|---|---|
-| Effects outside Kafka (database, email, APIs) | **At least once + idempotent consumer** (2.2.5) | A dedupe check per event |
-| Topic-to-topic processing | **Kafka transactions** | Extra latency (output visible only at commit), more complexity |
-| Stream-processing apps | **Kafka Streams `exactly_once_v2`** | Some throughput and latency cost |
-| Database change and event together | **Transactional outbox** (microservices track) | An outbox table and a relay |
-
-**Latency:** `read_committed` consumers see output only when the transaction commits, so longer transactions mean more delay. Keep transactions short.
-
-## 7. Common mistakes
-
-1. **Believing exactly-once covers the database or HTTP calls.** It doesn't.
-2. **Downstream consumers left on `read_uncommitted`**, seeing data from aborted transactions.
-3. **A random `transactional.id` on every start**, so zombies are never fenced.
-4. **The same `transactional.id` on two live instances**, so they keep fencing each other.
-5. **Long transactions**, adding latency and risking timeouts.
-6. **Using transactions where an idempotent consumer is simpler.**
-
-## 8. In code
+| Layer | Responsible for |
+|---|---|
+| Kafka broker and protocol | Deduplicating producer retries; atomic visibility of transactional writes and offsets; fencing |
+| Client (or Kafka Streams) | Running the transaction steps; `read_committed` filtering |
+| Spring Kafka | Transaction management via `transaction-id-prefix` and a Kafka transaction manager |
+| Application | Rewinding after aborts (plain clients), keeping transactions short, handling side effects outside Kafka |
+| External systems | Not covered by Kafka transactions |
 
 > [!NOTE]
-> Untested sketch to show the shape.
+> Untested sketch to show the shape (plain Java client).
 
 ```java
 producer.initTransactions();
 while (running) {
-    ConsumerRecords<String, OrderPlaced> batch = consumer.poll(Duration.ofMillis(500));
+    var batch = consumer.poll(Duration.ofMillis(500));
+    if (batch.isEmpty()) continue;
     producer.beginTransaction();
     try {
         for (var rec : batch) producer.send(new ProducerRecord<>("stock-reserved", rec.key(), reserve(rec.value())));
         producer.sendOffsetsToTransaction(nextOffsets(batch), consumer.groupMetadata());
         producer.commitTransaction();
     } catch (ProducerFencedException fenced) {
-        producer.close();                 // a newer instance owns this ID: stop
+        producer.close();                          // a newer instance owns this ID: stop
         break;
-    } catch (KafkaException e) {
-        producer.abortTransaction();      // nothing becomes visible; the batch is read again
+    } catch (KafkaException e) {                    // abortable errors; fatal ones (such as authorisation) need close()
+        producer.abortTransaction();               // nothing becomes visible
+        rewindToCommitted(consumer);               // seek each partition back to its committed offset
     }
 }
 ```
 
-```yaml
-spring:
-  kafka:
-    producer:
-      transaction-id-prefix: stock-reservation-
-    consumer:
-      isolation-level: read_committed
-```
+## 6. Failure scenarios
 
-| Setting | What it controls |
-|---|---|
-| `enable.idempotence` | No duplicates from producer retries |
-| `transactional.id` | Stable identity for transactions and fencing |
-| `isolation.level` | Whether consumers see only committed data |
-| `processing.guarantee` (Kafka Streams) | `exactly_once_v2` turns it all on |
+### Crash between output and offset commit
 
-## 9. Remember
+- **What happened?** The story above, without transactions.
+- **What the business sees:** duplicate `StockReserved` events.
+- **Solutions:** transactions with offsets in the transaction; or idempotent downstream consumers.
+- **Trade-offs:** transactions add latency and complexity; idempotent consumers need a deduplication store.
 
-- **Idempotent producer: no duplicates from retries. Transactions: outputs + offsets all or nothing.**
-- **Fencing stops zombies**, via a stable `transactional.id` and epochs.
-- **Consumers must use `read_committed`.**
-- **Exactly-once stops at Kafka's edge**; databases and APIs need idempotency.
-- **Kafka Streams: one setting, `exactly_once_v2`.**
+### Abort without rewinding
 
-## 10. Interview corner
+- **What happened?** A transaction aborted; the loop polled again and continued with new records.
+- **Why?** The consumer's in-memory position was already past the aborted batch.
+- **What the business sees:** some orders never get a reservation.
+- **Solutions:** reset to committed offsets after every abort (or let Kafka Streams or a framework do it).
+- **Trade-offs:** the batch is processed again, which is safe: its aborted output was never visible to `read_committed` consumers.
 
-**15-second answer:** "Kafka exactly-once is an idempotent producer plus transactions that commit output and input offsets atomically, with read_committed consumers and zombie fencing; it only covers Kafka-to-Kafka processing."
+### "Exactly-once" with a database write in the middle
 
-**60-second answer:**
-> "Exactly-once in Kafka has two parts. The idempotent producer stops duplicates from retries. Transactions make the output writes and the consumed offsets one atomic unit: begin, send, add the offsets with sendOffsetsToTransaction, commit, or abort on error. Consumers use read_committed so they never see aborted data, and a stable transactional ID with an epoch fences zombie instances. Kafka Streams turns this on with exactly_once_v2. The key limit is that it covers only consume-process-produce within Kafka; for databases or external APIs I use at-least-once with idempotent consumers or the outbox pattern."
+- **What happened?** The pipeline also updated a database row inside the loop; a retry after an abort updated it twice.
+- **Why?** The database isn't part of the Kafka transaction.
+- **Solutions:** make the database write idempotent, or move it to a separate consumer that uses the outbox or deduplication.
+- **Trade-offs:** an extra component or a dedupe table.
+
+## 7. Architectural decisions
+
+| Need | Use | Cost |
+|---|---|---|
+| Side effects outside Kafka | At-least-once + idempotent consumer ([2.2.5](05-offset-commits-delivery-guarantees.md)) | A dedupe store |
+| Topic-to-topic processing | Kafka transactions | Latency, complexity |
+| Stream-processing apps | Kafka Streams `exactly_once_v2` | Some throughput and latency |
+| Database change and event together | Transactional outbox ([2.2.15](15-kafka-connect-cdc.md)) | Outbox table and relay |
+
+Keep transactions short; `read_committed` consumers see output only after the commit.
+
+**Common mistakes:** believing exactly-once covers databases or HTTP calls; downstream consumers left on `read_uncommitted`; a random `transactional.id` on every start, so zombies are never fenced; the same `transactional.id` on two live instances; long transactions; transactions where an idempotent consumer would be simpler.
+
+## 8. Check your understanding
+
+1. What two problems does the idempotent producer *not* solve on its own?
+2. After `abortTransaction()`, a consumer immediately polls again. What goes wrong?
+3. A pipeline uses Kafka transactions and also sends an email per order. Is the email exactly-once?
+4. Why do downstream consumers need `read_committed`?
+
+Answers are at the end of this note.
+
+## 9. Revision
+
+**Remember**
+- **Idempotent producer:** no duplicates from retries. **Transactions:** outputs + offsets all or nothing.
+- **Fencing** via a stable `transactional.id` stops zombies.
+- After an **abort, rewind** the consumer to its committed offsets.
+- Downstream consumers use **`read_committed`**.
+- **Exactly-once stops at Kafka's edge.**
+
+**Explain in 15 seconds:** "Kafka exactly-once is an idempotent producer plus transactions that commit outputs and input offsets together, with read_committed consumers and zombie fencing, and it covers only Kafka-to-Kafka processing."
+
+**Explain in 60 seconds:**
+> "The idempotent producer stops duplicates from retries. Transactions make output writes and consumed offsets one atomic unit: begin, send, add the offsets with sendOffsetsToTransaction, commit, or abort and rewind the consumer to its committed offsets. Consumers use read_committed so they never see aborted data, and a stable transactional ID with an epoch fences zombie instances. Kafka Streams turns this on with exactly_once_v2. The key limit is the boundary: databases, emails and HTTP calls aren't covered, so for those I use at-least-once with idempotent handling or an outbox."
 
 **Likely follow-up questions:**
-- **Does exactly-once cover writing to a database?** No. Use idempotent writes, or store offsets in the same database transaction.
 - **What is a zombie producer?** An instance that was replaced but is still running; fencing rejects its writes.
-- **Why `read_committed`?** Otherwise consumers can read writes from transactions that are later aborted.
-- **Exactly-once versus effectively-once?** Exactly-once is Kafka's internal guarantee; effectively-once is at least once plus idempotent handling, which works across systems.
-- **What does it cost?** Latency (output visible at commit), throughput and complexity.
+- **Exactly-once versus effectively once?** Exactly-once is Kafka's guarantee inside Kafka; effectively once is at-least-once plus idempotent handling, which works across systems.
+- **What does it cost?** Latency (output is visible only at commit), some throughput, and complexity.
 
-**Architect angle:** "I use Kafka transactions or Streams EOS for topic-to-topic pipelines, and at-least-once with idempotent consumers everywhere side effects leave Kafka, and I say which one applies when someone says 'exactly once'."
+**Architect's takeaway:** when someone says "exactly once", ask "between which systems?"; Kafka's guarantee holds only inside Kafka.
 
-## 11. Industry check
+**Next topic:** [Schemas and evolution](10-schemas-evolution.md) (2.2.10)
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 by web search (KIP-98, KIP-447 and KIP-732 pages, Conduktor, Confluent). Re-verify when you revisit the note.
+> Checked 2026-10-21 by web search. Re-verify when you revisit this note.
 
-- **Confirmed:** only one producer per `transactional.id` can be active; zombies are fenced by an epoch; `initTransactions` completes in-progress transactions; the read-process-write pattern adds consumed offsets with `sendOffsetsToTransaction`; `ProducerFencedException` signals another active producer with the same ID; brokers cap transaction timeouts (`max.transaction.timeout.ms`). Kafka Streams `exactly_once_v2` (from KIP-447, introduced as "beta" in 2.6 and renamed in 3.0) is the recommended mode, and the original mode was removed in 4.0. Exactly-once covers only the consume-process-produce cycle inside Kafka; external side effects need application-level idempotency.
-- **To verify:** the default `isolation.level` for your client (commonly `read_uncommitted`); which parts of KIP-890 (transaction protocol hardening) shipped in your Kafka version; the default `transaction.timeout.ms`.
-- **Decision rule:** Kafka transactions or Streams EOS for topic-to-topic work; idempotent consumers or the outbox for everything else.
+- **Confirmed:** only one producer per `transactional.id` can be active; zombies are fenced by an epoch; `initTransactions` completes in-progress transactions; the read-process-write pattern adds offsets with `sendOffsetsToTransaction`; `ProducerFencedException` signals another active producer (KIP-98). After `abortTransaction()`, the consumer must be reset to its last committed positions to reprocess the aborted records (Confluent "Handle transactional errors"; SmallRye Kafka transactions guide). Kafka Streams `exactly_once_v2` comes from KIP-447 (introduced as beta in 2.6, renamed in 3.0); the original mode was removed in 4.0. Exactly-once covers only the consume-process-produce cycle inside Kafka.
+- **Assumptions and illustrations:** the ShopFlow story; code (not run); `rewindToCommitted` and `nextOffsets` are helper names, not library methods.
+- **Also confirmed:** consumers default to `isolation.level=read_uncommitted`; `transaction.timeout.ms` defaults to 60 s, after which the coordinator aborts an open transaction (Apache Kafka configuration; Conduktor configuration reference).
+- **To verify:** which parts of KIP-890 shipped in your version.
+- **Decision rule:** transactions or Streams EOS for topic-to-topic work; idempotent consumers or the outbox everywhere else.
 
-## 12. Going further
+**Sources:** KIP-98, KIP-447, KIP-732; Confluent documentation, "Handle transactional errors"; Apache Kafka documentation (transactions, Streams processing guarantees).
 
-- KIP-98 (exactly-once delivery and transactional messaging), KIP-447, KIP-732
-- Apache Kafka documentation: transactions and Kafka Streams processing guarantees
-- *Kafka: The Definitive Guide* (exactly-once semantics)
+## Answers
 
-**Next:** [Schemas and evolution (Avro, Schema Registry)](10-schemas-evolution.md) (2.2.10).
+1. It doesn't make "write output + commit input" atomic (a crash between them still duplicates output), and it doesn't stop duplicates your application creates by sending a new record twice.
+2. Its position is already past the aborted batch, so those records are skipped. It must seek each partition back to the last committed offset first.
+3. No. The email is outside Kafka; an aborted and retried batch can send it again. It needs idempotent handling or a separate, deduplicated step.
+4. Without it, consumers can read records from transactions that are later aborted, seeing output that officially never happened.
 
-Back to [the Kafka overview](01-kafka-overview.md) · [Messaging overview](../01-messaging-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).
+Back to [the Kafka overview](01-kafka-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).

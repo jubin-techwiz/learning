@@ -11,7 +11,7 @@ The folder numbers mirror the notes, so a lab is easy to find from its topic:
 ```
 labs/
   01-resilience/resilience-demo/       <- goes with notes/01-resilience/
-  02-messaging/kafka-demo/             <- planned, with notes/02-messaging/02-kafka/
+  02-messaging/kafka-demo/             <- not created; only if asked for
 ```
 
 **One lab per area.** A lab grows one small flow per topic (for example the resilience demo has a payment flow for the circuit breaker and a stock flow for the bulkhead). This keeps the number of projects small and lets patterns be combined.
@@ -21,6 +21,8 @@ labs/
 | Area | Lab | Covers | Port | Run | Needs |
 |---|---|---|---|---|---|
 | 01 Resilience | [resilience-demo](01-resilience/resilience-demo/README.md) | Circuit breaker, bulkhead | 8085 | `mvn spring-boot:run`, then `./demo.sh` and `./demo-bulkhead.sh` | Java 17+, Maven 3.9+ |
+
+There is no messaging lab. The Kafka notes include small "Try it yourself" experiments that need only a local broker and the Kafka command-line tools, so a separate project isn't needed for now.
 
 ## Port registry
 

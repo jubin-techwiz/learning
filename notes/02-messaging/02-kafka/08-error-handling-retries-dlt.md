@@ -1,6 +1,6 @@
 ---
 title: Error Handling, Retries and Dead-Letter Topics
-tags: [kafka, messaging, error-handling, retry, dead-letter-topic, poison-pill, spring-kafka, intermediate]
+tags: [kafka, messaging, error-handling, retry, dead-letter-topic, poison-message, spring-kafka, intermediate]
 category: messaging
 level: intermediate
 updated: "2026-10-21"
@@ -9,100 +9,94 @@ updated: "2026-10-21"
 # Error Handling, Retries and Dead-Letter Topics
 
 **Messaging · Kafka · Step 2.2.8 · Intermediate** · Last updated 2026-10-21
+**Prerequisites:** [Offset commits](05-offset-commits-delivery-guarantees.md) (2.2.5), [Retries, backoff and jitter](../../01-resilience/03-retries-backoff-jitter.md) (1.3)
+
+## 1. The concept in simple English
+
+**What is it?** A plan for events a consumer can't process: **retry** those that may succeed later, and move those that never will to a **dead-letter topic (DLT)**, so the rest keep flowing.
+
+**Why do we need it?** A partition is processed in order. One event that always fails, retried forever, blocks every event behind it.
+
+**When would I meet it?** Malformed data from a partner, a validation bug, a downstream database outage, or a schema change consumers can't read.
 
 > [!TIP]
-> **In one sentence:** when a consumer can't process an event, retry it if the failure is temporary, and move it aside to a dead-letter topic if it never will succeed, so one bad event can't block everything behind it.
->
-> **Memory hook:** a **post office sorting line**. A parcel with a smudged label gets one or two more tries; if it still can't be read, it goes to the **"undeliverable" shelf** to be checked by a person, and the belt keeps moving. Nobody stops the whole line for one parcel.
+> **Memory hook:** a sorting line with an "undeliverable" shelf: try a smudged label once or twice, then shelve it and keep the belt moving.
 
-## Where it fits
+## 2. Mental model: a parcel sorting line
 
-Step 2.2.8 of the [Kafka series](01-kafka-overview.md). It applies the resilience ideas of [retries with backoff](../../01-resilience/03-retries-backoff-jitter.md), [idempotency](../../01-resilience/04-idempotency.md) and the [circuit breaker](../../01-resilience/05-circuit-breaker.md) to consumers, and depends on [offset commits](05-offset-commits-delivery-guarantees.md) (2.2.5). Next: the [idempotent producer and transactions](09-idempotent-producer-transactions.md) (2.2.9).
+| In the analogy | In Kafka |
+|---|---|
+| A parcel with a smudged label | A **poison message** |
+| Trying again in a moment | **Blocking retry** |
+| Putting the parcel on a later belt | **Retry topic** (non-blocking retry) |
+| The undeliverable shelf | **Dead-letter topic** |
+| Someone checking the shelf every morning | DLT **alerting and ownership** |
 
-## 1. The story
+**Where the analogy breaks:** parcels on a later belt don't care about order, but events do: moving one event aside lets later events for the same order overtake it.
 
-A partner integration sends ShopFlow an `OrderPlaced` event with a malformed product code. `inventory-service` throws an exception, and the consumer keeps retrying the same event. Because a partition is read in order, **every event behind it waits**. Lag on that partition climbs into the thousands, and real orders aren't reserved. The bad event is a **poison message**: no number of retries will ever fix it.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Transient error** | May succeed if retried | Worth retrying with backoff | Database timeout | Retry |
+| **Permanent error** | Will never succeed | Retrying wastes time and blocks | Invalid product code | Poison message |
+| **Poison message** | An event that always fails | Can block a partition | Malformed JSON | DLT |
+| **Blocking retry** | Retry in place; the partition waits | Keeps order, delays everything behind | 3 quick attempts | Backoff |
+| **Retry topic** | Delayed retry on a separate topic | Main topic keeps flowing; may reorder | Retry after 1 s, 10 s, 1 min | Non-blocking retry |
+| **Dead-letter topic (DLT)** | Where unprocessable events are parked with error details | Keeps the flow moving; needs an owner | `payments` DLT | Dead-letter queue (DLQ) |
+| **Recoverer** | What runs after the last retry | Usually "publish to the DLT" | Spring `DeadLetterPublishingRecoverer` | Error handler |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** Orders from a partner integration must be reserved quickly; one bad event must not delay everyone else's orders.
+
+A partner sent `OrderPlaced` with a malformed product code. The Inventory Service's own retry loop retried it with no limit; every event behind it in that partition waited, lag climbed into the thousands, and real orders weren't reserved.
 
 ```mermaid
 flowchart LR
     P[Partition 3] --> E1[Event 100: malformed]
-    E1 -->|fails, retried forever| X[Consumer stuck]
-    P --> E2[Events 101 to 5000: waiting]
+    E1 -->|fails, retried without limit| X[Consumer stuck]
+    P --> E2[Events 101 and later: waiting]
     E2 -.-> X
 ```
 
-## 2. The idea
+**How the plan helps.** Classify errors: retry transient ones with backoff, send permanent ones to the DLT at once, alert, and keep the partition moving.
 
-**Sort failures into two kinds**, and treat them differently:
+**What it costs.** Events in the DLT need an owner and a replay path; retry topics can reorder events; and replays mean consumers must be idempotent.
 
-- **Transient** (the warehouse API timed out, the database was briefly down): **retry**, with backoff, because a later attempt can succeed.
-- **Permanent** (malformed data, a validation error, a deserialization failure): **don't retry**. Send the event straight to a **dead-letter topic (DLT)** with the error details, alert, and keep the partition moving.
+**Elsewhere:** a payments platform sends events to retry topics with growing delays while a card network is down, and only after hours to the DLT; partner integrations send invalid supplier data straight to the DLT and alert the integration team; an analytics pipeline dead-letters records it can't deserialize after a bad schema release, keeps running, and replays them after the fix.
 
-Transient failures that last longer are moved to **retry topics** with growing delays (non-blocking retries), so they don't hold up the main topic either.
+## 5. How it works
 
 ```mermaid
 flowchart LR
-    M[Main topic] --> C{Consumer: processing fails}
-    C -->|transient| B[Retry in place a few times with backoff]
+    M[Main topic] --> C{Processing fails}
+    C -->|transient| B[A few blocking retries with backoff]
     B -->|still failing| R[Retry topics: 1 s, 10 s, 1 min]
     R -->|still failing| D[Dead-letter topic]
     C -->|permanent| D
     D --> A[Alert, investigate, fix, replay]
 ```
 
-## 3. Key terms
+1. **What starts it:** the listener throws an exception.
+2. **Classify:** permanent errors (validation, deserialization) skip retries; transient ones are retried.
+3. **Blocking retries:** a few attempts in place with backoff; the partition's later events wait, and order is kept.
+4. **Non-blocking retries (optional):** the event is published to a retry topic with a "not before" time; later events in the main topic continue.
+5. **Dead-letter:** after the last attempt, the event is published to the DLT with headers (original topic, partition, offset, exception), and its offset is committed so the partition moves on. By default Spring writes to the **same partition number** in the DLT, so create the DLT with at least as many partitions as the original topic, and set its name explicitly: the default suffix changed between Spring Kafka versions.
+6. **Operate the DLT:** alert, fix, replay.
 
-| Term | Plain meaning |
+**Deserialization errors** happen before your code runs. Spring's `ErrorHandlingDeserializer` delivers the failure to the error handler, where it is treated as fatal (no retries) and can be dead-lettered.
+
+**If you configure nothing:** Spring's `DefaultErrorHandler` tries a failing record 10 times with no delay, then only logs it and moves on. There is no back-off and no DLT, so the event is effectively dropped. Always configure the error handler.
+
+**Who guarantees what**
+
+| Layer | Responsible for |
 |---|---|
-| **Poison message (pill)** | An event that will always fail, whatever you do |
-| **Transient error** | Temporary; may succeed on retry |
-| **Permanent error** | Will never succeed (bad data, validation) |
-| **Blocking retry** | Retrying in place; the partition waits meanwhile |
-| **Non-blocking retry** | Moving the event to a retry topic with a delay, so the main topic keeps flowing |
-| **Dead-letter topic (DLT)** | Where events that can't be processed are parked, with error details |
-| **Recoverer** | What happens after the last retry (for example, publish to the DLT) |
-| **Replay (redrive)** | Sending events from the DLT back for processing after a fix |
-
-## 4. How it works, step by step
-
-1. **The handler throws.** The framework's error handler decides what to do.
-2. **Classify the exception.** Permanent ones (validation, deserialization) skip retries; transient ones are retried.
-3. **Blocking retries:** a few quick attempts in place, with backoff, for short blips.
-4. **Non-blocking retries (optional):** publish the event to a retry topic with a "not before" time; a retry consumer waits until then and tries again, through one or more retry topics.
-5. **Dead-letter:** after the last attempt, publish the event to the DLT with headers such as original topic, partition, offset and exception, and commit the original offset so the partition moves on.
-6. **Operate the DLT:** alert on new entries, investigate, fix the cause, and replay the events. The consumer must be [idempotent](../../01-resilience/04-idempotency.md), because replays and retries repeat work.
-
-**Deserialization errors** happen before your code runs. Wrap the real deserializer in Spring's `ErrorHandlingDeserializer`, so a bad record arrives with the error attached and can go straight to the DLT instead of failing the whole poll.
-
-## 5. Real-world examples
-
-- **Payments:** when a card network is down, payment events go to retry topics with increasing delays instead of blocking all payments; after several hours they land in the DLT for manual handling.
-- **Partner integrations:** events with invalid data from a supplier go straight to the DLT, and an alert tells the integration team to contact that supplier.
-- **Analytics pipelines:** after a producer ships an incompatible schema, records that can't be deserialized go to the DLT, the pipeline keeps running, and the records are replayed once the schema is fixed.
-
-## 6. Design choices and trade-offs
-
-| Approach | Keeps order? | Blocks the partition? | Use for |
-|---|---|---|---|
-| **Blocking retries** (a few, short backoff) | Yes | Yes, briefly | Short blips, or when order must be kept |
-| **Non-blocking retry topics** | **No**: later events for the same key can be processed first | No | Longer transient failures where order doesn't matter |
-| **Straight to DLT** | Yes for the rest | No | Permanent errors, poison messages |
-
-**When order matters** (all events for one order must be applied in sequence), moving one event aside lets later ones overtake it. Prefer blocking retries, or park the whole key's events, or pause the consumer.
-
-**When a dependency is down** (not the event's fault), sending every event to the DLT would empty the whole topic into it. Better: a [circuit breaker](../../01-resilience/05-circuit-breaker.md) that **pauses consumption** until the dependency recovers.
-
-## 7. Common mistakes
-
-1. **Retrying permanent errors forever**, blocking the partition (the story).
-2. **Sending to a DLT nobody watches**: that's just silent data loss.
-3. **Treating a dependency outage as poison**, flooding the DLT with good events.
-4. **Retrying without idempotency**, so retries and replays double the effect.
-5. **Non-blocking retries where order matters.**
-6. **No context on DLT records** (original topic, offset, error), making investigation hard.
-7. **Retrying deserialization errors**, which can never succeed.
-
-## 8. In code
+| Kafka broker | Storing the main, retry and dead-letter topics; no error handling of its own |
+| Spring Kafka | Retries (`DefaultErrorHandler`, back-off), retry topics (`@RetryableTopic`), DLT publishing |
+| Application | Classifying errors, idempotent processing, DLT ownership and replay |
+| External systems | Whatever failed: their availability decides whether an error is transient |
 
 > [!NOTE]
 > Untested sketch to show the shape. Defaults (back-off, DLT naming) vary by Spring Kafka version; set them explicitly.
@@ -110,70 +104,105 @@ flowchart LR
 ```java
 @Bean
 DefaultErrorHandler errorHandler(KafkaTemplate<Object, Object> template) {
-    var recoverer = new DeadLetterPublishingRecoverer(template);   // publishes to a dead-letter topic
+    var recoverer = new DeadLetterPublishingRecoverer(template);   // publish failures to a DLT
     var backOff = new ExponentialBackOff(500, 2.0);
     backOff.setMaxElapsedTime(5_000);                               // a few quick blocking retries
     var handler = new DefaultErrorHandler(recoverer, backOff);
-    handler.addNotRetryableExceptions(ValidationException.class);   // permanent: straight to DLT
+    handler.addNotRetryableExceptions(ValidationException.class);   // permanent: straight to the DLT
     return handler;
 }
 ```
 
-```java
-@RetryableTopic(attempts = "4", backoff = @Backoff(delay = 1000, multiplier = 2.0))
-@KafkaListener(topics = "payments", groupId = "payment-service")
-public void onPayment(PaymentEvent event) { gateway.charge(event); }
+## 6. Failure scenarios
 
-@DltHandler
-public void onDeadLetter(PaymentEvent event) { alerts.raise("payment parked in DLT", event); }
-```
+### A poison message blocks a partition
 
-| Setting | What it controls |
-|---|---|
-| Back-off (fixed or exponential) | How many blocking retries, and the waits |
-| Not-retryable exceptions | Which errors skip retries |
-| `@RetryableTopic` attempts and back-off | Non-blocking retry topics and their delays |
-| `ErrorHandlingDeserializer` | Turns deserialization failures into records you can dead-letter |
+- **What happened?** The story above.
+- **Why?** Unlimited retries of a permanent error; later events can't pass in an ordered partition.
+- **What the business sees:** orders in that partition aren't processed.
+- **Solutions:** classify the error as non-retryable; dead-letter it with context; alert.
+- **Trade-offs:** the order now needs manual handling or a replay after a fix.
 
-## 9. Remember
+### Retry topics reorder business events
 
+- **What happened?** `OrderPlaced` 42 failed and went to a retry topic; `OrderCancelled` 42 succeeded first.
+- **Why?** Non-blocking retries let later events in the main topic overtake the one moved aside.
+- **What the business sees:** stock handled in the wrong order.
+- **Solutions:** blocking retries for ordered flows; or park all of a key's later events too; or make handlers tolerate out-of-order events (version numbers).
+- **Trade-offs:** blocking retries delay the partition; parking per key is complex.
+
+### A dependency outage floods the DLT
+
+- **What happened?** The inventory database was down for an hour; every event exhausted its retries and went to the DLT.
+- **Why?** The failure wasn't the events' fault.
+- **What the business sees:** thousands of good events parked, needing replay.
+- **Solutions:** pause the listener container while the dependency is down (for example when a [circuit breaker](../../01-resilience/05-circuit-breaker.md) opens) and resume when it recovers.
+- **Trade-offs:** lag grows during the pause, but nothing is lost.
+
+## 7. Architectural decisions
+
+| Approach | Keeps order? | Blocks the partition? | Use for |
+|---|---|---|---|
+| Blocking retries (few, short) | Yes | Yes, briefly | Short blips; ordered flows |
+| Retry topics | No | No | Longer transient failures where order doesn't matter |
+| Straight to DLT | Yes for the rest | No | Permanent errors |
+| Pause consumption | Yes | Yes, deliberately | Dependency outages |
+
+Spring's retry topics are not supported with batch listeners or container transactions.
+
+**Common mistakes:** retrying permanent errors forever; a DLT nobody watches (silent data loss); treating a dependency outage as poison; retrying without idempotency; non-blocking retries where order matters; DLT records without context headers; retrying deserialization errors.
+
+## 8. Check your understanding
+
+1. Why does one failing event block others in Kafka, but not necessarily in a queue broker with many consumers?
+2. A payment event fails because the card network is down. Transient or permanent, and what should happen?
+3. After introducing retry topics, cancellations are sometimes processed before their orders. Why?
+4. What should happen to events in a DLT, and who should own that?
+
+Answers are at the end of this note.
+
+## 9. Revision
+
+**Remember**
 - **Transient: retry with backoff. Permanent: dead-letter at once.**
-- **Never let one poison message block a partition.**
-- **Retry topics keep flowing but break per-key order.**
+- Never let one poison message block a partition.
+- **Retry topics keep the flow moving but can reorder** events for a key.
 - **A dependency outage is not poison**: pause, don't dead-letter.
-- **A DLT needs alerts, an owner and a replay path.**
+- A DLT needs alerts, an owner and a replay path; replays need idempotent consumers.
 
-## 10. Interview corner
+**Explain in 15 seconds:** "I classify consumer errors: transient ones get retries with backoff, permanent ones go straight to a dead-letter topic with alerts, so one bad event never blocks a partition."
 
-**15-second answer:** "I classify consumer errors: transient ones are retried with backoff, in place or through retry topics, and permanent ones go straight to a dead-letter topic with alerts, so one bad message never blocks a partition."
-
-**60-second answer:**
-> "Because a partition is processed in order, a message that always fails can block everything behind it. So I classify errors. Transient failures, like a timeout, get a few blocking retries with backoff, and if they last longer, non-blocking retry topics with increasing delays, accepting that this can reorder events for a key. Permanent failures, like validation or deserialization errors, go straight to a dead-letter topic with the original topic, offset and exception in headers. The DLT is alerted on and owned, and events are replayed after a fix, which is why consumers must be idempotent. If a dependency is down, I pause consumption with a circuit breaker instead of dead-lettering good events."
+**Explain in 60 seconds:**
+> "Because a partition is processed in order, an event that always fails can block everything behind it. Transient failures get a few blocking retries with backoff, which keep order, and if they last longer, retry topics with growing delays, accepting that later events can overtake. Permanent failures, like validation or deserialization errors, go straight to a dead-letter topic with the original topic, offset and error in headers, and someone owns and replays it after a fix, which is why consumers must be idempotent. If a dependency is down, I pause consumption rather than dead-letter good events."
 
 **Likely follow-up questions:**
 - **Blocking versus non-blocking retries?** Blocking keeps order but holds the partition; retry topics keep it flowing but can reorder.
-- **What is a poison message?** One that will always fail; it must be moved aside, not retried forever.
-- **What do you do with the DLT?** Alert, investigate, fix the cause, then replay with an idempotent consumer.
-- **How do you handle deserialization errors?** Wrap the deserializer so the bad record can be dead-lettered instead of failing the poll.
-- **What if the downstream database is down for an hour?** Pause consumption (circuit breaker), don't dead-letter every event.
+- **How do you handle deserialization errors?** Wrap the deserializer (`ErrorHandlingDeserializer`) so the bad record reaches the error handler and can be dead-lettered.
+- **What does Spring do if you configure nothing?** Ten immediate attempts, then it logs the record and moves on, without a DLT.
 
-**Architect angle:** "I define the error policy per topic: which errors are transient, whether order matters, the retry schedule, and who owns the DLT and its replay."
+**Architect's takeaway:** define the error policy per topic: which errors are transient, whether order matters, the retry schedule, and who owns the DLT and its replay.
 
-## 11. Industry check
+**Next topic:** [Idempotent producer and transactions](09-idempotent-producer-transactions.md) (2.2.9)
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 by web search (Spring for Apache Kafka reference, Conduktor, community articles). Re-verify when you revisit the note.
+> Checked 2026-10-21 by web search. Re-verify when you revisit this note.
 
-- **Confirmed:** Spring Kafka offers `@RetryableTopic` for non-blocking retries (since 2.7; on class-level listeners since 3.2); non-blocking retries are not supported with batch listeners or container transactions; blocking and non-blocking retries can be combined (since 2.8.4); a retry-topic consumer pauses the partition until a record's back-off time is due. A back-off such as `FixedBackOff(0, 2)` gives three attempts. `ErrorHandlingDeserializer` lets a deserialization failure reach the error handler, and `DeserializationException` is treated as fatal (not retried). If a schema registry is unreachable, every record can fail deserialization, so check for that before treating failures as poison.
-- **To verify:** the `DefaultErrorHandler` default back-off and the default dead-letter topic name in your Spring Kafka version; the exact ordering behaviour of retry topics in your setup.
+- **Confirmed:** Spring Kafka offers non-blocking retries with `@RetryableTopic` (since 2.7; on class-level listeners since 3.2); they are not supported with batch listeners or container transactions; blocking and non-blocking retries can be combined (since 2.8.4); a retry-topic consumer pauses the partition until a record's delay is due. `ErrorHandlingDeserializer` lets deserialization failures reach the error handler, and `DeserializationException` is treated as fatal. If a schema registry is unreachable, every record can fail deserialization: an outage, not poison (Spring for Apache Kafka reference; Conduktor).
+- **Assumptions and illustrations:** the ShopFlow stories; code (not run).
+- **Also confirmed:** without configuration, `DefaultErrorHandler` uses `FixedBackOff(0, 9)` (10 attempts, no delay) and then logs the record (Spring for Apache Kafka reference, handling exceptions).
+- **Also confirmed:** `DeadLetterPublishingRecoverer`'s default destination is the original topic plus a suffix (`.DLT` in older releases, `-dlt` in Spring Kafka 4.x) and the same partition, so the DLT needs at least as many partitions (Spring Kafka API documentation).
+- **To verify:** the exact release in which the default suffix changed.
 - **Decision rule:** classify errors; brief blocking retries; retry topics only where order doesn't matter; immediate DLT for permanent errors; pause on dependency outages; an owned DLT with replay.
 
-## 12. Going further
+**Sources:** Spring for Apache Kafka reference (error handling, non-blocking retries); *Enterprise Integration Patterns* ("Dead Letter Channel"); Conduktor, "Dead Letter Topics: Handling Poison Pills".
 
-- Spring for Apache Kafka reference: error handling, and non-blocking retries ("retry topics")
-- Gregor Hohpe and Bobby Woolf, *Enterprise Integration Patterns* ("Dead Letter Channel")
-- Conduktor, "Dead Letter Topics: Handling Poison Pills"
+## Answers
 
-**Next:** [The idempotent producer and transactions (exactly-once)](09-idempotent-producer-transactions.md) (2.2.9).
+1. A Kafka partition is read in order by one consumer, so the failing event must be resolved before the next one is processed. In a queue with many competing consumers, other consumers keep taking other messages (unless strict ordering is configured).
+2. Transient. Retry with backoff; if the outage lasts, use retry topics with growing delays or pause consumption, and only dead-letter after a long period, with alerts.
+3. A failed `OrderPlaced` moved to a retry topic while later events, including its `OrderCancelled`, continued on the main topic, so the cancellation overtook it.
+4. Alert on new entries, investigate the cause, fix it, then replay the events into the main flow. The team that owns the consuming service should own its DLT.
 
-Back to [the Kafka overview](01-kafka-overview.md) · [Messaging overview](../01-messaging-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).
+Back to [the Kafka overview](01-kafka-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).

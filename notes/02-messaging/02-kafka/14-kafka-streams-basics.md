@@ -9,167 +9,174 @@ updated: "2026-10-21"
 # Stream Processing Basics (Kafka Streams)
 
 **Messaging · Kafka · Step 2.2.14 · Advanced** · Last updated 2026-10-21
+**Prerequisites:** [Exactly-once](09-idempotent-producer-transactions.md) (2.2.9), [Log compaction](13-retention-compaction-tiered-storage.md) (2.2.13)
+
+## 1. The concept in simple English
+
+**What is it?** Kafka Streams is a Java library you embed in a service to continuously transform, aggregate and join Kafka topics, with its working state stored locally and backed up to Kafka.
+
+**Why do we need it?** Counting, summing and joining events correctly across restarts and rebalances is hard to build by hand; in-memory state is lost and duplicates distort totals.
+
+**When would I meet it?** Real-time counts (fraud signals), running totals (stock levels), enriching events with reference data.
 
 > [!TIP]
-> **In one sentence:** Kafka Streams is a Java library you embed in your service to continuously transform, aggregate and join Kafka topics, with its state kept locally and backed up to Kafka so it survives restarts.
->
-> **Memory hook:** a **live scoreboard at a stadium**. Every goal is an event (a stream); the scoreboard shows the current score per team (a table), updated the moment each goal happens, and if the scoreboard's power fails, it is rebuilt from the official list of goals (the changelog).
+> **Memory hook:** a live scoreboard: goals are the stream, the score is the table, and it can be rebuilt from the list of goals.
 
-## Where it fits
+## 2. Mental model: a stadium scoreboard
 
-Step 2.2.14 of the [Kafka series](01-kafka-overview.md). It builds on [consumer groups](04-consumers-consumer-groups.md) (2.2.4) for scaling, [compaction](13-retention-compaction-tiered-storage.md) (2.2.13) for its state topics, and [exactly-once](09-idempotent-producer-transactions.md) (2.2.9) for its processing guarantee. Next: [Kafka Connect and change data capture](15-kafka-connect-cdc.md) (2.2.15).
+| In the analogy | In Kafka Streams |
+|---|---|
+| Each goal | An event in a **KStream** |
+| The current score per team | A **KTable** (latest value per key) |
+| The scoreboard's memory | A local **state store** |
+| The official list of goals | The **changelog topic** |
 
-## 1. The story
+**Where the analogy breaks:** a scoreboard lives in one place; Kafka Streams state is **split across instances by partition**, and moves (and is restored) when partitions move.
 
-ShopFlow wants two live numbers: **stock level per product** from order and restock events, and a **fraud flag** when one card places too many orders in a few minutes. A developer builds both in a plain consumer with an in-memory map. On every restart the counts start from zero. On every rebalance, a different instance takes over a partition with an empty map. And when an event is processed twice after a crash, the stock count is off.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Topology** | The pipeline from input topics to output topics | The program you describe | Orders → stock levels | Task |
+| **KStream** | A stream of independent events | Each order on its own | `orders` | KTable |
+| **KTable** | The current value per key | Newer record replaces older | Stock per product | Compaction |
+| **State store** | Local storage (RocksDB) for running state | Fast stateful operations | Counts per card | Changelog |
+| **Changelog topic** | Compacted topic backing a state store | State survives restarts and moves | `app-store-changelog` | Restore |
+| **Co-partitioning** | Two topics keyed and partitioned alike | Required for joins | Clicks and profiles by user ID | Join |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** ShopFlow needs a live stock level per product and a fraud signal when one card places too many orders in a few minutes.
+
+A plain consumer with an in-memory map reset to zero on every restart, started empty when it took over partitions in a rebalance, and double-counted after reprocessing.
 
 ```mermaid
 flowchart LR
     O[orders topic] --> C[Plain consumer with in-memory map]
-    C -->|restart| Z[Counts reset to zero]
-    C -->|rebalance| E[New owner starts with an empty map]
+    C -->|restart| Z[Counts reset]
+    C -->|rebalance| E[New owner starts empty]
     C -->|reprocessing| D[Double counting]
 ```
 
-## 2. The idea
+**How Kafka Streams helps.** State lives in a local store backed by a changelog topic, so it's restored after restarts and moves with partitions; exactly-once processing prevents double counting.
 
-Use a **stream processing library** that handles the hard parts. With Kafka Streams you describe a pipeline (a **topology**): read a topic as a stream, group by key, aggregate, and write the result to another topic. The library:
+**What it costs.** Restoring large state takes time; joins need co-partitioned topics; it's a JVM library and Kafka is its only source and sink.
 
-- keeps the running state (counts, totals) in a **local state store** (RocksDB) on each instance;
-- copies every state change to a compacted **changelog topic** in Kafka, so state can be **restored** after a restart or moved to another instance on a rebalance;
-- splits the work by input partition and scales like a consumer group;
-- can run with **exactly-once** processing (`exactly_once_v2`).
+**Elsewhere:** fraud detection counts orders per card in short time windows and emits an alert event when a threshold is passed; real-time inventory aggregates order and restock events into a stock-per-product table the website reads; analytics enriches clicks by joining them with a user-profile table keyed the same way.
+
+## 5. How it works
 
 ```mermaid
 flowchart LR
-    I[orders topic: a stream of events] --> G[group by product ID]
-    G --> A[aggregate: stock per product]
+    I[stock-changes: KStream] --> G[group by product ID]
+    G --> A[aggregate: running total]
     A --> S[(Local state store)]
     S -.->|every change backed up| CL[changelog topic]
-    A --> T[stock-levels: a table, latest per product]
+    A --> T[stock-levels: KTable]
     CL -.->|restore after restart or rebalance| S
 ```
 
-## 3. Key terms
-
-| Term | Plain meaning |
-|---|---|
-| **Stream processing** | Continuously computing results as events arrive |
-| **Topology** | The pipeline of steps from input topics to output topics |
-| **KStream** | A stream of independent events (each order on its own) |
-| **KTable** | The current value per key; a newer record for a key replaces the older |
-| **State store** | Local storage (RocksDB) holding running state |
-| **Changelog topic** | A compacted Kafka topic backing up a state store |
-| **Stateless / stateful operation** | Map and filter need no memory; count, aggregate and join do |
-| **Windowed aggregation** | Counting or summing over a time window, such as "per 5 minutes" |
-| **Co-partitioning** | Two topics keyed and partitioned the same way, needed for joins |
-
-## 4. How it works, step by step
-
-1. You define the topology in code with the Streams DSL and give the app an `application.id` (which is also its consumer group).
-2. The library creates one **task** per input partition and spreads tasks across the running instances.
-3. **Stateless steps** (filter, map) just transform each event.
-4. **Stateful steps** (count, aggregate, join) read and write the local state store; each change is also written to the changelog topic.
-5. Results go to output topics, often as a KTable (latest value per key).
-6. If an instance stops, its tasks move to others, which **restore state from the changelog** before continuing.
-7. Converting between the two views is common: grouping and aggregating a KStream gives a KTable; turning a KTable back into a stream emits its updates.
-
-## 5. Real-world examples
-
-- **Fraud detection:** count orders per card in short time windows and emit an alert event when the count passes a threshold.
-- **Real-time inventory:** aggregate order and restock events into a stock-per-product table that the website reads.
-- **Enrichment:** join a stream of clicks with a table of user profiles (keyed the same way) to produce clicks with user details for analytics.
-
-## 6. Design choices and trade-offs
-
-| Option | Fits when | Watch out for |
-|---|---|---|
-| **Plain consumer** | Simple per-event work, no state across events | You must handle state, restarts and duplicates yourself |
-| **Kafka Streams** | You already use Kafka and the JVM; the logic is Kafka-in, Kafka-out | Java/JVM only; Kafka is the only source and sink; state restore time grows with state size |
-| **Apache Flink** | Complex event processing, many sources and sinks, very large state, batch and stream together | A separate cluster to run and operate |
-
-**Library versus framework:** Kafka Streams is code you ship inside your service, so it deploys like any app. Flink is infrastructure you operate.
-
-## 7. Common mistakes
-
-1. **Keeping running state in memory** in a plain consumer.
-2. **Joining topics that aren't co-partitioned** (different keys or partition counts).
-3. **Very large state without planning restore time** after failures.
-4. **Not using exactly-once** where counts must be exact.
-5. **Forgetting the internal topics** (changelogs and repartition topics) when planning replication, retention and disk.
-6. **Reaching for Flink** when a Kafka Streams app inside a service would do, or the reverse.
-
-## 8. In code
+1. **What starts it:** you define a topology and an `application.id` (which is also the consumer group).
+2. The library creates one **task** per input partition and spreads tasks across instances.
+3. Stateless steps (filter, map) transform each event; stateful steps (count, aggregate, join) use the state store and write every change to the changelog.
+4. Results go to output topics, often as a KTable.
+5. **On failure or rebalance:** tasks move; new owners **restore state from the changelog** before continuing.
+6. With `processing.guarantee=exactly_once_v2`, outputs, state and offsets are committed together.
 
 > [!NOTE]
 > Untested sketch to show the shape.
 
 ```java
-@Bean
-KStream<String, StockChange> stockPipeline(StreamsBuilder builder) {
-    KStream<String, StockChange> changes = builder.stream("stock-changes");
-    changes.groupByKey()                                          // key = product ID
-           .aggregate(() -> 0L, (product, change, total) -> total + change.delta())
-           .toStream()
-           .to("stock-levels");                                   // latest stock per product
-    return changes;
-}
+builder.<String, StockChange>stream("stock-changes")          // key = product ID
+       .groupByKey()
+       .aggregate(() -> 0L, (product, change, total) -> total + change.delta())
+       .toStream()
+       .to("stock-levels");                                    // latest stock per product
 ```
 
-```yaml
-spring:
-  kafka:
-    streams:
-      application-id: stock-levels-app
-      properties:
-        processing.guarantee: exactly_once_v2
-```
+## 6. Failure scenarios
 
-| Setting | What it controls |
-|---|---|
-| `application.id` | App identity and consumer group; prefix of internal topics |
-| `processing.guarantee` | At-least-once or `exactly_once_v2` |
-| State store type | Where state lives (RocksDB by default) |
-| Number of instances | Scaling, up to the input partition count |
+### State lost on restart (hand-built consumer)
 
-## 9. Remember
+- **What happened?** The story above.
+- **Solutions:** a state store with a changelog (Kafka Streams), or external storage with care.
+- **Trade-offs:** restore time; extra topics.
 
+### Join produces missing matches
+
+- **What happened?** Clicks keyed by session were joined with profiles keyed by user ID.
+- **Why?** The topics weren't co-partitioned, so matching keys were on different tasks.
+- **Solutions:** re-key and repartition so both sides share key and partition count.
+- **Trade-offs:** an internal repartition topic.
+
+### Long recovery after a failure
+
+- **What happened?** A large state store had to be rebuilt from its changelog after a node failed.
+- **What the business sees:** stale results until restore finishes.
+- **Solutions:** keep state lean; run **standby replicas** (`num.standby.replicas`, default 0; the Kafka docs suggest 1), which keep warm copies of state on other instances; plan restore time in the design.
+
+## 7. Architectural decisions
+
+| Option | Fits when | Watch out for |
+|---|---|---|
+| Plain consumer | Stateless per-event work | You must handle state yourself |
+| **Kafka Streams** | JVM services, Kafka in and Kafka out | Restore time; Kafka-only sources and sinks |
+| **Apache Flink** | Many sources and sinks, complex event processing, very large state | A separate cluster to operate |
+
+**Library versus framework:** Kafka Streams is code you ship inside your service; Flink is infrastructure you run.
+
+**Common mistakes:** running state in memory in a plain consumer; joining topics that aren't co-partitioned; very large state without planning restore time; not using exactly-once where counts must be exact; forgetting the internal changelog and repartition topics when planning disk and retention; reaching for Flink when a Streams app would do, or the reverse.
+
+## 8. Check your understanding
+
+1. What's the difference between a KStream and a KTable of the same topic?
+2. An instance running a stateful app dies. What happens to its state?
+3. Why must joined topics be co-partitioned?
+4. When would you pick Flink over Kafka Streams?
+
+Answers are at the end of this note.
+
+## 9. Revision
+
+**Remember**
 - **KStream = events; KTable = latest value per key.**
-- **State lives locally (RocksDB) and is backed up to a changelog topic.**
-- **Tasks per partition; scale like a consumer group.**
-- **Joins need co-partitioned topics.**
-- **Library you ship (Kafka Streams) versus cluster you run (Flink).**
+- **State is local (RocksDB) and backed by changelog topics.**
+- **Tasks per partition**; scales like a consumer group.
+- **Joins need co-partitioning.**
+- **Library you ship (Streams) versus cluster you run (Flink).**
 
-## 10. Interview corner
+**Explain in 15 seconds:** "Kafka Streams is a library for continuous processing of Kafka topics: streams and tables, local state backed by changelog topics, scaling by partitions, and optional exactly-once."
 
-**15-second answer:** "Kafka Streams is a library for continuous processing of Kafka topics: streams and tables, local state backed by changelog topics, scaling by partitions, and optional exactly-once."
-
-**60-second answer:**
-> "Kafka Streams lets me build stream processing inside a normal Java service. I define a topology: read topics as KStreams of events, group and aggregate them into KTables that hold the latest value per key, join them, and write results to topics. Stateful steps keep state in a local RocksDB store that's backed up to a compacted changelog topic, so when an instance restarts or a partition moves, state is restored. Work is split into tasks per partition, so it scales like a consumer group, and exactly_once_v2 makes counts exact. I'd choose Flink instead when I need many sources and sinks, complex event processing or very large state on a dedicated cluster."
+**Explain in 60 seconds:**
+> "Kafka Streams lets me build stream processing inside a normal Java service. I describe a topology: read topics as KStreams, group and aggregate them into KTables holding the latest value per key, join them, and write results back to topics. Stateful steps keep state in a local RocksDB store backed up to a compacted changelog topic, so state is restored when instances restart or partitions move. Work is split into tasks per partition, and exactly_once_v2 keeps totals exact. I'd choose Flink for many sources and sinks, complex event processing or very large state."
 
 **Likely follow-up questions:**
-- **KStream versus KTable?** Independent events versus the current value per key.
-- **What happens to state when an instance dies?** Its tasks move and state is rebuilt from the changelog topics.
-- **Why must joined topics be co-partitioned?** Matching keys must be on the same task to be joined locally.
-- **Kafka Streams or Flink?** Streams for Kafka-in, Kafka-out logic inside services; Flink for broader, larger, cluster-based processing.
+- **Where does Kafka Streams keep its state?** In a local store (RocksDB by default), backed by a compacted changelog topic.
+- **What is a repartition topic?** An internal topic Kafka Streams writes to when you re-key data, so records with the same new key reach the same task.
+- **How does Kafka Streams scale?** Like a consumer group: one task per input partition, spread across instances.
 
-**Architect angle:** "I pick Kafka Streams when the processing belongs to one service's domain and stays within Kafka, and a platform like Flink when processing is shared, large or spans many systems."
+**Architect's takeaway:** use Kafka Streams when processing belongs to one service and stays in Kafka; use a platform like Flink when it's shared, large or spans many systems.
 
-## 11. Industry check
+**Next topic:** [Kafka Connect and change data capture](15-kafka-connect-cdc.md) (2.2.15)
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 by web search (Conduktor comparisons, Instaclustr, Kafka Javadoc and wiki). Re-verify when you revisit the note.
+> Checked 2026-10-21 by web search. Re-verify when you revisit this note.
 
-- **Confirmed:** Kafka Streams is a library embedded in your application, Flink a framework that runs applications on its own cluster; Kafka Streams keeps local RocksDB state with changelog topics for durability, while Flink checkpoints to durable storage; Kafka Streams is Java/JVM-focused and Kafka is its only source and sink, while Flink can use other sources and sinks. A KStream is a sequence of independent events; a KTable is the current state per key (latest record wins); grouping and aggregating a KStream gives a KTable, and `toStream()` emits a KTable's updates; joining a KStream with a KTable requires co-partitioning.
-- **To verify:** the window types (tumbling, hopping, sliding, session) and their semantics; standby replicas (`num.standby.replicas`) for faster failover; the default replication factor of Kafka Streams internal topics in your version.
-- **Decision rule:** a plain consumer for stateless work, Kafka Streams for stateful Kafka-to-Kafka logic inside services, Flink for large or multi-system processing.
+- **Confirmed:** Kafka Streams is a library embedded in your application, Flink a framework running applications on its own cluster; Kafka Streams keeps local RocksDB state with changelog topics for durability; Kafka is its only source and sink; a KStream is a sequence of independent events and a KTable the current state per key; aggregating a KStream gives a KTable and `toStream()` emits its updates; KStream-KTable joins require co-partitioning.
+- **Assumptions and illustrations:** the ShopFlow story; code (not run).
+- **Also confirmed:** `num.standby.replicas` defaults to 0 and `replication.factor` for internal topics to -1 (the broker default); the Kafka Streams guide suggests 1 standby and replication factor 3 for resilience (Apache Kafka Streams configuration guide).
+- **To verify:** window types and semantics.
+- **Decision rule:** plain consumer for stateless work, Kafka Streams for stateful Kafka-to-Kafka logic in services, Flink for large or multi-system processing.
 
-## 12. Going further
+**Sources:** Apache Kafka documentation (Kafka Streams); Conduktor, "Kafka Streams vs Apache Flink"; *Designing Data-Intensive Applications*.
 
-- Apache Kafka documentation: Kafka Streams
-- Conduktor, "Kafka Streams vs Apache Flink"
-- Martin Kleppmann, *Designing Data-Intensive Applications* (stream processing)
+## Answers
 
-**Next:** [Kafka Connect and change data capture](15-kafka-connect-cdc.md) (2.2.15).
+1. The KStream treats every record as an independent event; the KTable treats each record as an update, so only the latest value per key matters.
+2. Its tasks move to other instances, which rebuild the state from the changelog topics before processing again.
+3. A join happens locally within a task, so matching keys from both topics must land in the same partition number; that requires the same key and partition count.
+4. When you need many non-Kafka sources and sinks, complex event processing, very large state, or batch and streaming together on a dedicated platform.
 
-Back to [the Kafka overview](01-kafka-overview.md) · [Messaging overview](../01-messaging-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).
+Back to [the Kafka overview](01-kafka-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).

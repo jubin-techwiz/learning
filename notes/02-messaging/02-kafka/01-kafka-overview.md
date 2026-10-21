@@ -8,33 +8,58 @@ updated: "2026-10-21"
 
 # Apache Kafka: The Big Picture
 
-**Messaging · Kafka · Step 2.2.1 · Fundamentals** · Last updated 2026-10-21
+**Messaging · Kafka · Step 2.2.1 · Series overview** · Last updated 2026-10-21
+**Prerequisites:** [Messaging and event-driven design](../01-messaging-overview.md) (2.1)
+
+Read this first. It is the map of the Kafka series: the big idea, the core vocabulary and the learning order from fundamentals to advanced.
+
+## 1. The concept in simple English
+
+**What is it?** Apache Kafka is a distributed, durable **log** of events. Producers add events to the end; consumers read at their own pace, each with its own bookmark; events are kept for a set time whether or not anyone has read them.
+
+**Why do we need it?** Some data must be read by many independent services, replayed later, and handled at high volume. A queue that deletes messages once processed can't do that.
+
+**When would I meet it?** Event-driven microservices, activity tracking, change data capture, data pipelines and stream processing.
 
 > [!TIP]
-> **In one sentence:** Kafka is a distributed, durable log of events: producers append to the end, consumers read at their own pace with their own bookmark, and events are kept for a set time whether or not anyone has read them.
->
-> **Memory hook:** a **ship's logbook that never gets torn up**. Entries are only ever added at the end. Anyone can read it, each with their own bookmark, and a newcomer can start from page one.
+> **Memory hook:** a logbook that never gets torn up: entries only added at the end, many readers, each with their own bookmark.
 
-Read this first. It is the map for the Kafka series: the big idea, the vocabulary and the learning order.
+## 2. Mental model: a shared logbook
 
-## Where it fits
+| In the analogy | In Kafka |
+|---|---|
+| The logbook | A **topic** |
+| Several volumes of the logbook, kept on different shelves | **Partitions**, spread over **brokers** |
+| A line number in one volume | An **offset** |
+| A reader's bookmark | A consumer group's **committed offset** |
+| Photocopies kept in other rooms | **Replicas** |
 
-Step 2.2.1, the start of the Kafka series inside the [messaging area](../01-messaging-overview.md). Kafka is the *log* family; RabbitMQ (2.3) is the *queue* family. Next: [the log, topics, partitions and offsets](02-log-topics-partitions-offsets.md) (2.2.2).
+**Where the analogy breaks:** a logbook is read in one sequence; Kafka keeps order **only within each partition**, not across the whole topic. And old pages are removed after the **retention** period, so "never torn up" is true only for that window.
 
-## 1. The story
+## 3. Industry terms
 
-ShopFlow used a queue for `OrderPlaced`. It worked until three new needs arrived: analytics wanted every order too, a new fraud service wanted the **last month** of orders to train on, and a bug in notifications meant yesterday's events had to be **processed again**. With a queue, a message is gone once it's consumed: each new reader needs its own copy, and there's no history to replay.
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Topic** | A named log for one kind of event | Unit of naming, retention and access | `orders` | Partition |
+| **Partition** | An ordered, append-only slice of a topic | Unit of order and parallelism | `orders` partition 3 | Key |
+| **Offset** | An event's position in its partition | The consumer's bookmark | Offset 42 | Committed offset |
+| **Broker** | A Kafka server | Unit of storage, failure and capacity | Three brokers | Replication |
+| **Consumer group** | Consumers sharing a topic's partitions | Parallelism and independent readers | `inventory-service` group | Rebalance |
+| **Retention** | How long events are kept | Sets how far back replay can go | 7 days by default | Log compaction |
+| **KRaft** | Kafka's built-in metadata quorum | Since 4.0 the only mode; no ZooKeeper | 3 controllers | Controller |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** ShopFlow first used a queue for `OrderPlaced`. Then analytics wanted every order too, a new fraud service wanted the last month of orders to train on, and a bug fix in the Notification Service required yesterday's events to be processed again. A queue removes messages once consumed: each new reader needs its own copy, and there is no history.
 
 ```mermaid
 flowchart LR
     O[order-service] --> Q[Queue]
-    Q --> N[notification]
-    Q -.->|message gone once read| X[analytics, fraud: nothing to read, no history]
+    Q --> N[notification-service]
+    Q -.->|removed once consumed| X[analytics, fraud: no copy, no history]
 ```
 
-## 2. The idea
-
-Treat events as a durable **record of what happened**, not tasks that vanish. Kafka keeps every event for a retention period. Each group of readers keeps its own **offset** (bookmark), so notification, analytics and fraud each read everything at their own speed, and anyone can move their bookmark back to replay. To handle huge volume, each topic is split into **partitions** spread over many brokers.
+**How Kafka helps.** Events are kept for the retention period. Each consumer group keeps its own offsets, so notification, analytics and fraud read everything independently, and any group can move its offsets back to replay.
 
 ```mermaid
 flowchart LR
@@ -45,124 +70,120 @@ flowchart LR
         b[Partition 1]
         c[Partition 2]
     end
-    T --> G1[Group: notification]
-    T --> G2[Group: analytics]
-    T --> G3[Group: fraud, replays last month]
+    T --> G1[Group: notification-service]
+    T --> G2[Group: analytics-service]
+    T --> G3[Group: fraud, replays 30 days]
 ```
 
-## 3. Key terms
+**What it costs.** A cluster to operate (or a managed service to pay for), ordering only within partitions, and the responsibility for idempotent consumers.
 
-| Term | Plain meaning |
-|---|---|
-| **Event / record** | One entry: key, value, timestamp |
-| **Topic** | A named log, such as `orders` |
-| **Partition** | A slice of a topic; an ordered, append-only sequence |
-| **Offset** | An event's position inside its partition: the bookmark |
-| **Broker** | A Kafka server; a cluster has several |
-| **Producer / consumer** | Writes events / reads events |
-| **Consumer group** | Consumers sharing a topic's work; each partition goes to one member |
-| **Replication** | Copies of each partition on other brokers |
-| **Retention** | How long events are kept (default 7 days) |
+**Elsewhere:** websites stream clicks and page views into Kafka for recommendation, analytics and monitoring teams to read independently; database changes are streamed into Kafka to keep search indexes and warehouses in sync ([2.2.15](15-kafka-connect-cdc.md)); payment events are scored for fraud in real time and later replayed to test new rules on past data.
 
-## 4. How it works, step by step
+## 5. How it works, in five steps
 
-1. Producers append events to a topic; the **key** decides the partition.
-2. Each partition lives on a **leader** broker and is copied to followers.
-3. Consumers in a **group** split the partitions between them.
-4. Each group stores its own offsets, so groups never affect each other.
-5. Events stay until retention ends; reading doesn't delete them.
+1. Producers append events to a topic; the **key** chooses the partition.
+2. Each partition has a **leader** broker and follower copies on other brokers.
+3. Consumers in a **group** split the partitions; each partition goes to one member.
+4. Each group commits its own offsets; groups never affect each other.
+5. Events stay until retention removes them; reading does not delete.
 
-Three rules explain most of Kafka's behaviour: **order exists only inside a partition**; **parallelism is capped by the number of partitions**; **reading doesn't delete**.
+Three rules explain most behaviour: **order exists only within a partition**; **partitions cap consumer parallelism**; **reading doesn't delete**.
 
-## 5. Real-world examples
-
-- **Activity tracking:** large websites stream clicks and page views into Kafka, and many teams (recommendations, analytics, monitoring) read the same stream.
-- **Change data capture:** database changes are streamed into Kafka so search indexes, caches and data warehouses stay in sync.
-- **Payments and fraud:** transaction events are read in real time by fraud detection, and later replayed to test new fraud rules on past data.
-
-## 6. Design choices: when Kafka, and when not
+## 6. Architectural decisions: when Kafka, and when not
 
 | Good fit | Poor fit |
 |---|---|
-| High-throughput event streams | Rich per-message routing (a queue broker is simpler) |
-| Many independent consumers of the same events | Small task queues needing priorities or per-message delays |
-| Replay and event history | Request-reply conversations |
-| Integrating systems, stream processing | Teams unwilling to run a cluster when a managed queue would do |
+| High-volume event streams | Rich per-message routing (a queue broker is simpler) |
+| Many independent consumers of the same facts | Small task queues needing priorities or per-message delays |
+| Replay and history | Request-reply conversations |
+| Integration and stream processing | Teams unwilling to operate a cluster when a managed queue would do |
 | | Querying data by arbitrary fields (it's a log, not a database) |
+
+**Kafka as a queue?** Since Kafka 4.2, **share groups** (KIP-932) are production-ready: several consumers can take records from the same partition one at a time and acknowledge each record, as in a queue. They give up per-partition ordering and offer no priorities or delays, so they widen Kafka's reach without replacing a queue broker. The comparison note (2.4) will cover the choice.
 
 ## 7. Notes in this series, in learning order
 
 ### Fundamentals
 
-| Step | Topic | Status |
-|---|---|---|
-| 2.2.1 | This overview | Done |
-| 2.2.2 | [The log: topics, partitions and offsets](02-log-topics-partitions-offsets.md) | Done |
-| 2.2.3 | [Producers: keys, partitioning, acks and batching](03-producers-keys-acks-batching.md) | Done |
-| 2.2.4 | [Consumers and consumer groups](04-consumers-consumer-groups.md) | Done |
-| 2.2.5 | [Offset commits and delivery guarantees](05-offset-commits-delivery-guarantees.md) | Done |
-| 2.2.6 | [Brokers, replication and leader election](06-brokers-replication-leader-election.md) | Done |
+| Step | Topic | Prerequisites | Status |
+|---|---|---|---|
+| 2.2.1 | This overview | 2.1 | Done |
+| 2.2.2 | [The log: topics, partitions and offsets](02-log-topics-partitions-offsets.md) | 2.2.1 | Done |
+| 2.2.3 | [Producers: keys, partitioning, acks and batching](03-producers-keys-acks-batching.md) | [2.2.2](02-log-topics-partitions-offsets.md) | Done |
+| 2.2.4 | [Consumers and consumer groups](04-consumers-consumer-groups.md) | [2.2.2](02-log-topics-partitions-offsets.md) | Done |
+| 2.2.5 | [Offset commits and delivery guarantees](05-offset-commits-delivery-guarantees.md) | [2.2.4](04-consumers-consumer-groups.md), 1.4 | Done |
+| 2.2.6 | [Brokers, replication and leader election](06-brokers-replication-leader-election.md) | [2.2.3](03-producers-keys-acks-batching.md) | Done |
 
 ### Intermediate
 
-| Step | Topic | Status |
-|---|---|---|
-| 2.2.7 | [Rebalancing and static membership](07-rebalancing-static-membership.md) | Done |
-| 2.2.8 | [Error handling, retries and dead-letter topics](08-error-handling-retries-dlt.md) | Done |
-| 2.2.9 | [Idempotent producer and transactions (exactly-once)](09-idempotent-producer-transactions.md) | Done |
-| 2.2.10 | [Schemas and evolution (Avro, Schema Registry)](10-schemas-evolution.md) | Done |
-| 2.2.11 | [Ordering, partition planning and hot partitions](11-ordering-partition-planning-hot-partitions.md) | Done |
-| 2.2.12 | [Kafka with Spring Boot](12-kafka-with-spring-boot.md) | Done |
+| Step | Topic | Prerequisites | Status |
+|---|---|---|---|
+| 2.2.7 | [Rebalancing and static membership](07-rebalancing-static-membership.md) | [2.2.4](04-consumers-consumer-groups.md), [2.2.5](05-offset-commits-delivery-guarantees.md) | Done |
+| 2.2.8 | [Error handling, retries and dead-letter topics](08-error-handling-retries-dlt.md) | [2.2.5](05-offset-commits-delivery-guarantees.md), 1.3 | Done |
+| 2.2.9 | [Idempotent producer and transactions](09-idempotent-producer-transactions.md) | [2.2.3](03-producers-keys-acks-batching.md), [2.2.5](05-offset-commits-delivery-guarantees.md) | Done |
+| 2.2.10 | [Schemas and evolution](10-schemas-evolution.md) | [2.2.3](03-producers-keys-acks-batching.md) | Done |
+| 2.2.11 | [Ordering, partition planning and hot partitions](11-ordering-partition-planning-hot-partitions.md) | [2.2.2](02-log-topics-partitions-offsets.md), [2.2.8](08-error-handling-retries-dlt.md) | Done |
+| 2.2.12 | [Kafka with Spring Boot](12-kafka-with-spring-boot.md) | [2.2.3](03-producers-keys-acks-batching.md) to [2.2.9](09-idempotent-producer-transactions.md) | Done |
 
 ### Advanced
 
-| Step | Topic | Status |
-|---|---|---|
-| 2.2.13 | [Retention, log compaction and tiered storage](13-retention-compaction-tiered-storage.md) | Done |
-| 2.2.14 | [Stream processing basics (Kafka Streams)](14-kafka-streams-basics.md) | Done |
-| 2.2.15 | [Kafka Connect and change data capture](15-kafka-connect-cdc.md) | Done |
-| 2.2.16 | [Security: TLS, SASL and ACLs](16-security-tls-sasl-acls.md) | Done |
-| 2.2.17 | [Monitoring, consumer lag and capacity planning](17-monitoring-lag-capacity.md) | Done |
-| 2.2.18 | [Multi-cluster and disaster recovery](18-multi-cluster-disaster-recovery.md) | Done |
+| Step | Topic | Prerequisites | Status |
+|---|---|---|---|
+| 2.2.13 | [Retention, log compaction and tiered storage](13-retention-compaction-tiered-storage.md) | [2.2.2](02-log-topics-partitions-offsets.md) | Done |
+| 2.2.14 | [Stream processing basics (Kafka Streams)](14-kafka-streams-basics.md) | [2.2.9](09-idempotent-producer-transactions.md), [2.2.13](13-retention-compaction-tiered-storage.md) | Done |
+| 2.2.15 | [Kafka Connect and change data capture](15-kafka-connect-cdc.md) | [2.2.8](08-error-handling-retries-dlt.md) | Done |
+| 2.2.16 | [Security: TLS, SASL and ACLs](16-security-tls-sasl-acls.md) | 2.2.1 | Done |
+| 2.2.17 | [Monitoring, consumer lag and capacity planning](17-monitoring-lag-capacity.md) | [2.2.6](06-brokers-replication-leader-election.md), [2.2.11](11-ordering-partition-planning-hot-partitions.md) | Done |
+| 2.2.18 | [Multi-cluster and disaster recovery](18-multi-cluster-disaster-recovery.md) | [2.2.6](06-brokers-replication-leader-election.md), [2.2.15](15-kafka-connect-cdc.md) | Done |
 
-Steps 2.2.8 and 2.2.9 build on the resilience notes on [retries](../../01-resilience/03-retries-backoff-jitter.md) and [idempotency](../../01-resilience/04-idempotency.md).
+Steps 1.3 and 1.4 are the resilience notes on [retries](../../01-resilience/03-retries-backoff-jitter.md) and [idempotency](../../01-resilience/04-idempotency.md). Notes with a "Try it yourself" section: [2.2.2](02-log-topics-partitions-offsets.md), [2.2.4](04-consumers-consumer-groups.md), [2.2.5](05-offset-commits-delivery-guarantees.md), [2.2.7](07-rebalancing-static-membership.md), [2.2.13](13-retention-compaction-tiered-storage.md). Revise with the [glossary](../98-messaging-glossary.md) and [cheat sheet](../99-messaging-cheat-sheet.md).
 
-## 8. Remember
+## 8. Check your understanding
 
-- **The log is the source of truth; consumers are readers with bookmarks.**
-- **Order only inside a partition**; the key picks the partition.
-- **Partitions cap parallelism.**
-- **Reading doesn't delete**; each group has its own offsets.
-- **Kafka is a log, not a database and not a task queue.**
+1. Why can three different consumer groups read the same events without affecting each other?
+2. A topic has 4 partitions and a group has 6 consumers. What happens, and what does that tell you about planning?
+3. Is Kafka a good choice for "a job queue where some tasks must run before others regardless of arrival"? Why?
 
-## 9. Interview corner
+Answers are at the end of this note.
 
-**15-second answer:** "Kafka is a distributed, durable log: producers append events to partitioned topics, and consumer groups read at their own pace with their own offsets, so many teams can read and replay the same data."
+## 9. Revision
 
-**60-second answer:**
-> "Kafka is a distributed, durable log. Producers append events to topics, which are split into partitions for scale; order is guaranteed within a partition, so I use a key to keep related events together. Consumers read at their own pace, each group tracking its own offset, so many teams can read the same events and replay them, because events are kept for a retention period instead of being deleted when read. I choose Kafka for high throughput, event history and many independent consumers, and a queue like RabbitMQ when the messages are tasks to be done once with flexible routing."
+**Remember**
+- The log is the source of truth; consumers are readers with bookmarks.
+- Order only within a partition; the key picks the partition.
+- Partitions cap parallelism; reading doesn't delete.
+- Kafka is a log first: not a database, and its queue-style share groups (4.2+) are newer and narrower than a queue broker.
+
+**Explain in 15 seconds:** "Kafka is a distributed, durable log: producers append to partitioned topics, and each consumer group reads at its own pace with its own offsets, so many teams can read and replay the same events."
+
+**Explain in 60 seconds:**
+> "Kafka is a distributed, durable log. Producers append events to topics, split into partitions for scale; order is guaranteed only within a partition, so related events share a key. Consumers read at their own pace, each group tracking its own offsets, and events are kept for a retention period, so many teams can read the same events and replay them. I choose Kafka for high throughput, history and many independent consumers, and a queue broker when messages are tasks done once with flexible routing, remembering that consumers must handle duplicates because delivery is usually at-least-once."
 
 **Likely follow-up questions:**
 - **Topic versus partition?** The topic is the named log; partitions are its ordered slices and the unit of scale.
-- **Does reading remove a message?** No; it stays until retention ends.
-- **Why can't more consumers always help?** Each partition goes to one consumer per group; extras sit idle.
+- **Does reading remove a message?** No; it stays until retention (or compaction) removes it.
 - **Kafka versus RabbitMQ in one line?** Kafka keeps facts for many readers and replay; RabbitMQ routes tasks to be done once.
 
-**Architect angle:** "I choose Kafka when events are shared, long-lived facts, and avoid it when a managed queue would solve a simple task problem with less to operate."
+**Architect's takeaway:** choose Kafka when events are shared, long-lived facts; don't introduce a cluster where a managed queue solves a simple task problem.
 
-## 10. Industry check
+**Next topic:** [The log: topics, partitions and offsets](02-log-topics-partitions-offsets.md) (2.2.2)
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-20 by web search; mostly blog and vendor articles. Re-verify when you revisit the note.
+> Checked 2026-10-20 by web search. Re-verify when you revisit this note.
 
-- **Confirmed:** Kafka 4.0 (March 2025) removed ZooKeeper; metadata is managed by KRaft, now the only mode. A ZooKeeper-based cluster can't be upgraded straight to 4.0 (reported path: move to 3.9.x first). 4.0 also introduced a new consumer group protocol (KIP-848) and early access to queue-style consumption (KIP-932).
-- **To verify:** which Kafka release is newest today; managed offerings (Confluent Cloud, Amazon MSK) for your needs.
+- **Confirmed:** Kafka 4.0 (March 2025) removed ZooKeeper; KRaft is the only metadata mode; a ZooKeeper-based cluster can't be upgraded straight to 4.0 (the reported path is 3.9.x first). Kafka 4.0 made the new consumer group protocol (KIP-848) generally available and added early access to queue-style share groups (KIP-932), which became production-ready in Kafka 4.2. The default retention is 7 days (`log.retention.hours=168`).
+- **Assumptions and illustrations:** the ShopFlow scenario and the real-world uses in this series are illustrative.
+- **To verify:** the newest Kafka release when you read this; managed offerings for your needs.
 - **Decision rule:** Kafka for many independent consumers, replay and throughput; a queue for tasks with rich routing.
 
-## 11. Going further
+**Sources:** Apache Kafka documentation and release notes; *Kafka: The Definitive Guide*; *Designing Data-Intensive Applications*.
 
-- Apache Kafka documentation (kafka.apache.org)
-- Neha Narkhede, Gwen Shapira and Todd Palino, *Kafka: The Definitive Guide*
-- Martin Kleppmann, *Designing Data-Intensive Applications*
+## Answers
+
+1. Each group stores its own committed offsets per partition, and reading doesn't delete events, so one group's progress never changes what another group sees.
+2. Each partition is assigned to one member of the group, so 4 consumers work and 2 are idle standbys. Plan partitions for the parallelism you need at peak.
+3. Not a natural fit. Kafka keeps order within a partition by arrival and has no per-message priorities (share groups don't add them either); a queue broker with priority or routing features fits better.
 
 Back to [the messaging overview](../01-messaging-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).

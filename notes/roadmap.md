@@ -19,7 +19,7 @@ A step number is the path of the note: **track.step**, or **track.series.step** 
 ## How to use it
 
 1. Pick the next topic from **Do next**.
-2. Learn it in a short lesson, try the example if there is one, and read the note.
+2. Learn it in a short lesson, read the note, answer its questions, and try its experiment if it has one.
 3. The note, its area overview and this page get updated.
 4. Revise from the area's cheat sheet. Revisit *Done* notes about every 6 months, or when you use the topic at work.
 
@@ -118,6 +118,7 @@ The topic list is a proposal; refine it, and check it against the current Rabbit
 | Step | Topic | Role | Status |
 |---|---|---|---|
 | 2.4 | Choosing a messaging system: Kafka, RabbitMQ and cloud queues | Architect | Planned |
+| 2.98 | [Messaging glossary (canonical terms)](02-messaging/98-messaging-glossary.md) | Both | Growing |
 | 2.99 | [Messaging cheat sheet (revision)](02-messaging/99-messaging-cheat-sheet.md) | Both | Growing |
 
 ### 3. Design patterns

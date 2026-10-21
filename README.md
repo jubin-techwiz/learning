@@ -11,10 +11,16 @@ The principle: **the documentation stands on its own, and hands-on demo apps are
 | [`notes/`](notes/README.md) | The learning notes: simple, structured, numbered in learning order. Start at `notes/roadmap.md` | **Yes, this folder only** |
 | [`labs/`](labs/README.md) | Optional runnable demo apps, one per area, each with its own README | No |
 | `progress/` | Learner tracking for the coach: what is done, gaps, next lesson | No |
+| [`LEARNING-STANDARD.md`](LEARNING-STANDARD.md) | The rules every note follows: structure, explanations, terms, examples, diagrams, verification, checklist | No |
+| [`templates/`](templates/) | A note template, an area-overview template and a reusable authoring prompt | No |
+| [`tools/`](tools/README.md) | Checks for links, note structure, Kenmora rendering and Mermaid diagrams (`./tools/check-notes.sh`) | No |
 
 ```
 learning/
   README.md          this file
+  LEARNING-STANDARD.md   how notes are written (read before writing one)
+  templates/         note and overview templates, authoring prompt
+  tools/             documentation checks (check-notes.sh)
   notes/             docs (the only folder for Kenmora)
     roadmap.md
     01-resilience/ ...
@@ -27,9 +33,9 @@ learning/
 
 1. Open `notes/roadmap.md` and pick the next item under **Do next**.
 2. Read the area's overview note, then the topic note.
-3. Answer the note's Quick Q&A from memory.
-4. If a demo exists for the area, run it from its README and watch the behaviour the note describes. It is never required.
-5. Revise later from the area's cheat sheet.
+3. Answer the note's "Check your understanding" questions before reading the answers at the end.
+4. If the note has a "Try it yourself" experiment, or a demo exists for the area, run it. It is never required.
+5. Revise later from the area's cheat sheet and glossary.
 
 ## Reading in Kenmora
 
@@ -46,8 +52,8 @@ Folder and file numbers form the step number, so alphabetical order is learning 
 ## Adding a new area or series
 
 1. Create `notes/NN-<area>/` and write its `01-<area>-overview.md` first (the area index and how topics relate). For a big subject such as Kafka, add a series folder `NN-<series>/` with its own overview.
-2. Add notes as `NN-<topic>.md` in learning order, using the standard note sections.
-3. Update the area overview, `notes/README.md` and `notes/roadmap.md` together.
+2. Add notes as `NN-<topic>.md` in learning order. Start from `templates/LEARNING-NOTE-TEMPLATE.md` and follow `LEARNING-STANDARD.md`; when an AI assistant writes the note, give it `templates/AUTHORING-PROMPT.md`.
+3. Update the area overview, glossary, cheat sheet, `notes/README.md` and `notes/roadmap.md` together.
 4. Only if running something helps: create `labs/NN-<area>/<area>-demo/`, give it a port from the registry in `labs/README.md`, and write its README. Notes never mention the lab.
 
 ## Rules that keep it tidy
@@ -55,9 +61,9 @@ Folder and file numbers form the step number, so alphabetical order is learning 
 - Notes are self-contained: example code and real results are written inside the note.
 - Labs document themselves and do not depend on the notes.
 - Only record results that were actually observed, with versions.
-- Each note has an Industry check section; verify it before relying on the note.
+- Each note has a Verification and sources section (Industry check in older notes); verify it before relying on the note.
 - Build output (`target/`, `node_modules/`) and secrets are never committed; see `.gitignore`.
 
 ## Version control
 
-This folder is a local git repository (no commits and no remote yet). Commit when you want a checkpoint of your notes.
+This folder is a git repository with a private GitHub remote. Commit when you want a checkpoint of your notes.

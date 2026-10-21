@@ -9,179 +9,187 @@ updated: "2026-10-21"
 # Schemas and Evolution (Avro, Schema Registry)
 
 **Messaging · Kafka · Step 2.2.10 · Intermediate** · Last updated 2026-10-21
+**Prerequisites:** [Producers](03-producers-keys-acks-batching.md) (2.2.3)
+
+## 1. The concept in simple English
+
+**What is it?** A **schema** is the agreed shape of an event. A **schema registry** stores every version of it and checks that changes stay **compatible**, so producers and consumers can change at different times without breaking each other.
+
+**Why do we need it?** Events are read by many teams and kept for days or years. A careless change by one producer can break every consumer, including ones reading old events.
+
+**When would I meet it?** Adding a field to an event, renaming one, replaying old data, or onboarding a new consumer team.
 
 > [!TIP]
-> **In one sentence:** a schema is the agreed shape of an event, a schema registry stores every version and checks that changes stay compatible, so producers and consumers can evolve independently without breaking each other.
->
-> **Memory hook:** a **standard plug socket**. Appliance makers and house builders never meet, but everything fits because both follow the standard. New appliances can add features, but they can't change the shape of the plug, or every house breaks.
+> **Memory hook:** a standard plug socket: add features to the appliance, never change the shape of the plug.
 
-## Where it fits
+## 2. Mental model: a plug standard
 
-Step 2.2.10 of the [Kafka series](01-kafka-overview.md). Events are long-lived and read by many teams ([consumer groups](04-consumers-consumer-groups.md), 2.2.4), so their shape is a contract. Bad data that slips through ends up in [dead-letter topics](08-error-handling-retries-dlt.md) (2.2.8). Next: [ordering, partition planning and hot partitions](11-ordering-partition-planning-hot-partitions.md) (2.2.11).
+| In the analogy | In Kafka |
+|---|---|
+| The plug standard | The **schema** |
+| The standards body checking new designs | The **schema registry** with a **compatibility mode** |
+| A new appliance with extra features | A new schema version with an optional field |
+| A plug of a new shape | A breaking change (rename, type change) |
 
-## 1. The story
+**Where the analogy breaks:** houses don't keep old appliances forever, but Kafka keeps old events; a consumer may have to read many schema versions in the same topic.
 
-ShopFlow's `order-service` publishes `OrderPlaced` as plain JSON. One release renames `amount` to `totalAmount` and sends the price as text instead of a number. Nobody tells the consumers. `notification-service` starts sending emails with an empty total, `analytics-service` fails on every event, and when the data team **replays last month's events** after a fix, the old and new shapes are mixed in the same topic.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Schema** | Formal description of an event's fields and types | The contract between teams | Avro record `OrderPlaced` | Data contract |
+| **Schema evolution** | Changing a schema without breaking readers or writers | Teams deploy independently | Adding `currency` with a default | Compatibility |
+| **Schema registry** | Stores schema versions, checks compatibility | Catches breaking changes before production | Confluent Schema Registry | Subject |
+| **Compatibility mode** | The rule a new version must follow | Decides upgrade order | BACKWARD, FORWARD, FULL | Transitive |
+| **Schema ID** | A number in each message saying which schema it uses | Messages stay small | ID 17 | Wire format |
+| **Data contract** | Schema plus rules and an owner | Treats events like public APIs | `order-service` owns `OrderPlaced` | Schema |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** The Order Service team wants to evolve `OrderPlaced` freely, while the Notification and Analytics teams must keep working, including when they replay old events.
+
+With plain JSON, one release renamed `amount` to `totalAmount` and sent the price as text. The Notification Service sent emails with empty totals, the Analytics Service failed on every event, and a replay mixed both shapes in one topic.
 
 ```mermaid
 flowchart LR
-    O[order-service v2: amount renamed, price as text] --> T[orders topic: old and new shapes mixed]
-    T --> N[notification: empty totals]
-    T --> A[analytics: fails on every event]
-    T --> R[replay: two incompatible shapes]
+    O[order-service: amount renamed, price as text] --> T[orders topic: two shapes mixed]
+    T --> N[notification-service: empty totals]
+    T --> A[analytics-service: fails]
+    T --> R[replay: incompatible versions]
 ```
 
-## 2. The idea
+**How a registry helps.** The registry rejects the rename before it ships; safe changes (adding an optional field with a default) pass; each message carries a schema ID so consumers can read every version.
 
-Treat the event shape as a **contract**. Describe it in a **schema** (Avro, Protobuf or JSON Schema) and store every version in a **schema registry**. Before a producer can use a new version, the registry **checks compatibility** with earlier versions; an incompatible change, like renaming a field, is rejected before it reaches production.
+**What it costs.** A registry to run (and to keep available), binary formats that need tooling to read, and discipline in how changes are rolled out.
 
-Each message carries only a small **schema ID**, not the whole schema. Consumers fetch the schema by ID (and cache it), so they can read any version that is in the topic.
+**Elsewhere:** in a large retailer, dozens of services read one event type, and a compatibility check in the producer's build pipeline stops breaking changes; data lakes that keep years of events use transitive compatibility so every old version stays readable; teams already using Protobuf for gRPC APIs use it for Kafka events too.
+
+## 5. How it works
 
 ```mermaid
 flowchart LR
-    P[order-service] -->|register v3, compatibility check| SR[(Schema Registry)]
-    SR -->|ok, ID 17| P
+    P[order-service] -->|register version 3: compatibility check| SR[(Schema registry)]
+    SR -->|accepted, ID 17| P
     P -->|ID 17 + compact payload| T[orders topic]
     T --> C[Consumers]
     C -->|fetch schema 17, cached| SR
-    X[Incompatible change: rename field] -.->|rejected| SR
+    X[Breaking change: rename a field] -.->|rejected| SR
 ```
 
-## 3. Key terms
-
-| Term | Plain meaning |
-|---|---|
-| **Schema** | The formal description of an event's fields and types |
-| **Schema evolution** | Changing a schema over time without breaking readers or writers |
-| **Schema Registry** | A service storing schema versions and checking compatibility |
-| **Subject** | The name a group of schema versions is registered under |
-| **Schema ID** | A number written into each message to say which schema it uses |
-| **Compatibility mode** | The rule a new version must follow (BACKWARD, FORWARD, FULL, NONE) |
-| **Data contract** | The schema plus its rules and owner: the promise a producer makes |
-| **Avro / Protobuf** | Compact binary formats with schemas and evolution rules |
-
-## 4. How it works, step by step
-
-1. The producer's serializer takes the event and its schema.
-2. It looks up (or registers) the schema in the registry; the registry **checks compatibility** against earlier versions.
-3. The registry returns a **schema ID**.
-4. The serializer writes a small header (a magic byte `0` and the 4-byte schema ID), then the compact payload.
-5. The consumer's deserializer reads the ID, fetches that schema from the registry (once, then cached) and decodes the event.
-
-**Compatibility modes**, and the upgrade order they allow:
+1. **What starts it:** the producer's serializer encodes an event with its schema.
+2. It looks up or registers the schema; the registry **checks compatibility** against earlier versions.
+3. The registry returns a **schema ID**; the message is written as a magic byte `0`, the 4-byte schema ID, then the payload.
+4. The consumer reads the ID, fetches the schema once (then caches it) and decodes.
 
 | Mode | Guarantee | Upgrade first |
 |---|---|---|
-| **BACKWARD** (default) | Consumers on the new schema can read data written with the previous one | Consumers |
+| **BACKWARD** (default in Confluent Schema Registry) | Consumers on the new schema can read data written with the previous one | Consumers |
 | **FORWARD** | Consumers on the old schema can read data written with the new one | Producers |
 | **FULL** | Both | Either |
-| ***_TRANSITIVE** | The same, against **all** earlier versions, not just the last one | As above |
+| `*_TRANSITIVE` | The same, against all earlier versions | As above |
 | **NONE** | No checks | You are on your own |
 
-**Safe evolution habits:** add new fields as **optional, with a default**; never rename a field or change its type; deprecate before removing; for a truly breaking change, publish a **new event type or topic** (for example `OrderPlacedV2`) and migrate consumers.
-
-## 5. Real-world examples
-
-- **Many teams, one event:** in a large retailer, dozens of services read `OrderPlaced`. A compatibility check in the producer's build pipeline stops a breaking change before it ships.
-- **Data lakes:** years of events must stay readable for analytics and audits, so teams use transitive compatibility to keep every old version decodable.
-- **Mobile and gRPC shops:** teams already using Protobuf for APIs use Protobuf schemas for Kafka too, so one schema language covers both.
-
-## 6. Design choices and trade-offs
-
-| Format | Strengths | Weaknesses |
-|---|---|---|
-| Plain JSON | Readable, no tooling | No contract; breaking changes slip through; larger messages |
-| JSON Schema | Readable, with validation | Larger messages; evolution rules less natural |
-| **Avro** | Compact, strong evolution rules, common with Kafka | Binary; needs tooling to read |
-| **Protobuf** | Compact, widely used with gRPC | Binary; its own evolution rules |
-
-**Choosing a mode:** keep **BACKWARD** (the default) unless you have a reason: it lets you rewind consumers to the start of a topic, and it means you roll out consumers first. Use transitive modes for long-retained or replayed topics.
-
-**Ownership:** the producing team owns the schema; consumers are stakeholders. That is a *data contract*, and it belongs in design reviews.
-
-## 7. Common mistakes
-
-1. **Plain JSON with no contract** between teams.
-2. **Setting compatibility to NONE** to "unblock" a release.
-3. **Renaming fields or changing types** in place.
-4. **Getting the rollout order wrong**: with BACKWARD, upgrade consumers before producers.
-5. **Letting every producer auto-register schemas in production**, instead of registering through the build pipeline.
-6. **Treating a registry outage as bad data**, sending good events to the DLT (see 2.2.8).
-
-## 8. In code
-
 > [!NOTE]
-> Untested sketch to show the shape. Class names follow Confluent's serializers; check versions.
+> Untested sketch to show the shape.
 
 ```json
-{
-  "type": "record", "name": "OrderPlaced", "namespace": "com.shopflow.orders",
+{ "type": "record", "name": "OrderPlaced", "namespace": "com.shopflow.orders",
   "fields": [
     { "name": "orderId", "type": "string" },
     { "name": "amount", "type": "double" },
     { "name": "currency", "type": "string", "default": "EUR" }
-  ]
-}
+  ] }
 ```
 
-The `currency` field was added in a later version, **with a default**, so readers using the new schema can still read older events that don't have it.
+`currency` was added in a later version **with a default**, so readers on the new schema can still read older events without it.
 
-```yaml
-spring:
-  kafka:
-    producer:
-      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
-      properties:
-        schema.registry.url: http://schema-registry:8081
-        auto.register.schemas: false      # register through the build pipeline instead
-```
+## 6. Failure scenarios
 
-| Setting | What it controls |
-|---|---|
-| Serializer / deserializer | Encodes events with the schema ID, decodes with the fetched schema |
-| `schema.registry.url` | Where schemas are stored |
-| Compatibility mode (per subject) | Which changes the registry accepts |
-| Auto-registration | Whether clients may register new versions themselves |
+### A breaking change reaches production
 
-## 9. Remember
+- **What happened?** The rename in the story.
+- **Why?** No contract and no automated compatibility check.
+- **What the business sees:** wrong emails, broken reports, failed replays.
+- **Solutions:** a registry with a compatibility mode; register schemas in the build pipeline; breaking changes become a new event type or topic.
+- **Trade-offs:** slower, deliberate changes.
 
+### Wrong rollout order
+
+- **What happened?** Under BACKWARD mode the team removed a field that consumers still read, and upgraded the producer before the consumers; old consumers then met events without that field.
+- **Why it hurts:** BACKWARD guarantees new readers can read old data, not that old readers can read new data.
+- **Solutions:** upgrade consumers first under BACKWARD (or choose FULL).
+- **Trade-offs:** coordinated rollouts.
+
+### The registry is unavailable
+
+- **What happened?** Consumers met a schema ID they hadn't cached and couldn't fetch it.
+- **What the business sees:** deserialization failures on every new-version event.
+- **Solutions:** highly available registry; treat it as an outage (pause), not as poison messages ([2.2.8](08-error-handling-retries-dlt.md)).
+- **Trade-offs:** the registry becomes critical infrastructure.
+
+## 7. Architectural decisions
+
+| Format | Strengths | Weaknesses |
+|---|---|---|
+| Plain JSON | Readable, no tooling | No enforced contract; larger |
+| JSON Schema | Readable with validation | Larger messages |
+| **Avro** | Compact, strong evolution rules, common with Kafka | Binary; needs tooling |
+| **Protobuf** | Compact, common with gRPC | Binary; its own evolution rules |
+
+Keep **BACKWARD** unless you have a reason: upgraded consumers can read the previous version. Plain BACKWARD checks only against the latest version, so for topics you replay from the start or keep for a long time use **BACKWARD_TRANSITIVE**, which checks against every earlier version. The producing team owns the schema.
+
+**Common mistakes:** plain JSON with no contract; setting compatibility to NONE to unblock a release; renaming or retyping fields in place; the wrong rollout order; every producer auto-registering schemas in production instead of through the build pipeline; treating a registry outage as bad data.
+
+## 8. Check your understanding
+
+1. Under BACKWARD compatibility, which side do you upgrade first, and why?
+2. Is adding a required field without a default a safe change for readers of old events? Why?
+3. How would you rename a field that many consumers use?
+4. Why does each message carry a schema ID instead of the schema?
+
+Answers are at the end of this note.
+
+## 9. Revision
+
+**Remember**
 - **The event shape is a contract**; the producer owns it.
-- **The registry checks compatibility before the change ships.**
-- **Messages carry a schema ID, not the schema.**
-- **BACKWARD (default): upgrade consumers first.** Transitive for long-lived topics.
-- **Add optional fields with defaults; never rename or retype; breaking change = new event.**
+- **The registry checks compatibility before a change ships.**
+- **BACKWARD (default): upgrade consumers first**; transitive for long-lived topics.
+- **Add optional fields with defaults; never rename or retype in place.**
+- Messages carry a **schema ID**, not the schema.
 
-## 10. Interview corner
+**Explain in 15 seconds:** "I define events with Avro or Protobuf schemas in a schema registry that enforces compatibility, so producers and consumers can evolve independently."
 
-**15-second answer:** "I define events with Avro or Protobuf schemas in a schema registry that enforces compatibility, so producers and consumers can evolve independently without breaking each other."
-
-**60-second answer:**
-> "Kafka events are long-lived and read by many teams, so their shape is a contract. I define them with a schema format like Avro or Protobuf and store versions in a schema registry. Each message carries a small schema ID, and consumers fetch and cache the schema. The registry checks every new version against a compatibility mode; I keep the default BACKWARD, which lets consumers on the new schema read older data, so consumers roll out first and topics can be replayed. Safe changes are adding optional fields with defaults; renames, type changes and other breaking changes go into a new event type or topic. Schemas are registered through CI, not by producers at runtime."
+**Explain in 60 seconds:**
+> "Kafka events are long-lived and shared, so their shape is a contract. I define them with Avro or Protobuf and store versions in a schema registry; each message carries a small schema ID, and consumers fetch and cache the schema. The registry checks every new version against a compatibility mode. I keep BACKWARD, or BACKWARD_TRANSITIVE for topics we replay, so upgraded consumers can read older data, which means consumers are upgraded first. Safe changes are optional fields with defaults; renames and type changes become a new event type."
 
 **Likely follow-up questions:**
 - **BACKWARD versus FORWARD?** BACKWARD: new readers handle old data (upgrade consumers first). FORWARD: old readers handle new data (upgrade producers first).
-- **How do you make a breaking change?** A new event type or topic, run both, migrate consumers, then retire the old one.
-- **Why not plain JSON?** No enforced contract, so breaking changes reach consumers at runtime; it's also bigger.
-- **What's in the message itself?** A magic byte and the schema ID, then the binary payload.
-- **What if the registry is down?** Clients cache schemas they've seen; new schemas can't be fetched or registered, so treat it as an outage, not bad data.
+- **How do you make a breaking change?** Publish a new event type or topic, run both, migrate consumers, then retire the old one.
+- **Why not plain JSON?** No enforced contract, so breaking changes reach consumers at runtime; messages are also larger.
 
-**Architect angle:** "I treat event schemas as public APIs: versioned, compatibility-checked in CI, owned by the producer, and reviewed when they change."
+**Architect's takeaway:** treat event schemas as public APIs: versioned, checked in CI, owned by the producer, reviewed when they change.
 
-## 11. Industry check
+**Next topic:** [Ordering, partition planning and hot partitions](11-ordering-partition-planning-hot-partitions.md) (2.2.11)
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 by web search (Confluent Schema Registry documentation, serializer docs, third-party wire-format write-ups). Re-verify when you revisit the note.
+> Checked 2026-10-21 by web search. Re-verify when you revisit this note.
 
-- **Confirmed:** Confluent Schema Registry's default compatibility is BACKWARD (consumers on schema X can read data written with X or X-1); other modes are BACKWARD_TRANSITIVE, FORWARD, FORWARD_TRANSITIVE, FULL, FULL_TRANSITIVE and NONE; Confluent recommends keeping BACKWARD because it allows rewinding consumers to the beginning of a topic; adding optional fields is allowed under BACKWARD. The wire format is a magic byte `0x00`, a 4-byte big-endian schema ID, then the payload (Protobuf adds message indexes). Confluent Platform offers broker-side schema ID validation.
-- **To verify:** the default subject naming strategy (commonly `<topic>-value`); the full table of allowed changes per mode; alternatives such as Apicurio Registry and their wire formats.
-- **Decision rule:** schema format + registry for shared events, BACKWARD (transitive for long retention), registration through CI, breaking changes as new event types.
+- **Confirmed:** Confluent Schema Registry's default compatibility is BACKWARD (consumers on schema X can read data written with X or X-1); modes include the transitive variants, FORWARD, FULL and NONE; Confluent recommends keeping BACKWARD because it allows rewinding consumers to the beginning of a topic (strictly, only the transitive variant checks against all earlier versions); adding optional fields is allowed under BACKWARD. The wire format is a magic byte `0x00`, a 4-byte big-endian schema ID, then the payload (Protobuf adds message indexes).
+- **Assumptions and illustrations:** the ShopFlow story; the schema (not registered).
+- **Also confirmed:** the default subject naming strategy is `TopicNameStrategy`: values are registered under `<topic>-value` and keys under `<topic>-key` (Confluent Schema Registry concepts).
+- **To verify:** the full table of allowed changes per mode; other registries (for example Apicurio) and their wire formats.
+- **Decision rule:** schema format and registry for shared events; BACKWARD (transitive for long retention); registration through CI; breaking changes as new event types.
 
-## 12. Going further
+**Sources:** Confluent documentation, "Schema Evolution and Compatibility"; Apache Avro specification; *Designing Data-Intensive Applications* (encoding and evolution).
 
-- Confluent documentation: "Schema Evolution and Compatibility"
-- Apache Avro specification: schema resolution
-- Martin Kleppmann, *Designing Data-Intensive Applications* (encoding and evolution)
+## Answers
 
-**Next:** [Ordering, partition planning and hot partitions](11-ordering-partition-planning-hot-partitions.md) (2.2.11).
+1. Consumers. BACKWARD guarantees that the new schema can read data written with the previous one, so upgraded consumers can handle both old and new events before producers start writing the new version.
+2. No. A reader on the new schema looking at an old event finds no value and no default for the field, so it can't decode it.
+3. Add the new field alongside the old one (optional, with a default), migrate consumers, then deprecate and later remove the old field; or publish a new event type and migrate consumers to it.
+4. To keep messages small: the schema is stored once in the registry and cached by clients, and the ID says which version to use.
 
-Back to [the Kafka overview](01-kafka-overview.md) · [Messaging overview](../01-messaging-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).
+Back to [the Kafka overview](01-kafka-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).

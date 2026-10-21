@@ -8,149 +8,177 @@ updated: "2026-10-21"
 
 # Messaging and Event-Driven Design: The Big Picture
 
-**Messaging · Step 2.1 · Fundamentals** · Last updated 2026-10-21
+**Messaging · Step 2.1 · Overview** · Last updated 2026-10-21
+**Prerequisites:** [Resilience patterns](../01-resilience/01-resilience-overview.md) (helpful, not required)
+
+Read this first. It is the map of the messaging area: the problem messaging solves, the two families of brokers, the questions every design must answer, and the learning order.
+
+## 1. The concept in simple English
+
+**What is it?** Messaging lets services talk by leaving messages with a middleman, a **message broker**, instead of calling each other directly.
+
+**Why do we need it?** With direct calls, every service must be up and fast at the same moment, and the caller must know every receiver. Messaging removes both constraints.
+
+**When would I meet it?** When one action (an order) must trigger work in several services (payment, stock, email, analytics), or when work can happen a little later than the user's request.
 
 > [!TIP]
-> **In one sentence:** messaging lets services talk by sending messages through a broker instead of calling each other directly, which decouples them in time and knowledge, at the cost of duplicates, ordering questions and eventual consistency.
->
-> **Memory hook:** a **phone call versus a letter in a mailbox**. A call needs both people available right now. A letter waits in the mailbox until the reader is ready, and many people can receive a copy.
+> **Memory hook:** a phone call needs both people now; a letter waits in the mailbox until the reader is ready.
 
-Read this first. It is the map for the whole messaging area, including the Kafka and RabbitMQ series.
+## 2. Mental model: a parcel delivery service
 
-## Where it fits
+Sending a message is like sending a parcel. You hand it to the courier and go on with your day. The courier stores it, delivers it when the recipient is available, and can confirm delivery. Undeliverable parcels go to a returns depot.
 
-Step 2.1, the start of the messaging track. It builds on the resilience track (messaging is one way to stop one slow service from slowing others), and leads into the [Kafka series](02-kafka/01-kafka-overview.md) (2.2) and the RabbitMQ series (2.3).
+| In the analogy | In the real system |
+|---|---|
+| Sender | **Producer** (for example the Order Service) |
+| Courier company and its depots | **Message broker** (Kafka, RabbitMQ) |
+| Address or delivery route | **Topic** or **queue** |
+| Recipient | **Consumer** (for example the Notification Service) |
+| Delivery confirmation | **Acknowledgement (ack)** |
+| Returns depot for undeliverable parcels | **Dead-letter queue or topic** |
 
-## 1. The story
+**Where the analogy breaks:** a parcel exists once and is gone when delivered. A message can be **delivered more than once** after failures, and in a log-based broker such as Kafka it **stays after reading**, so many recipients can read the same message, and read it again later.
 
-When a customer places an order, ShopFlow's `order-service` calls payment, inventory, notification and analytics over HTTP, one after the other. When the email provider is slow, customers wait at checkout. When analytics is down, orders fail. And when the fraud team wants to react to orders too, `order-service` has to be changed and redeployed.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Message broker** | The middleman that stores and delivers messages | Services no longer need to be up at the same time | Kafka cluster | Queue, log |
+| **Event** | "This happened", for anyone interested | The producer doesn't need to know who reacts | `OrderPlaced` | Command |
+| **Command** | "Do this", for one receiver | Has an owner and an expected action | `ChargeCard` | Event |
+| **Queue** | Each message is taken by one consumer, then removed | Distributes work | RabbitMQ queue, Amazon SQS | Log |
+| **Log** | Messages are kept; each reader has its own position | Many readers and replay | Kafka topic | Retention |
+| **Delivery guarantee** | What the system promises about loss and duplication | Drives how consumers must be written | At-least-once | At-most-once, exactly-once |
+| **Eventual consistency** | All parts agree after a short delay | The price of decoupling | Stock updated just after the order | Strong consistency |
+
+All terms are defined in the [messaging glossary](98-messaging-glossary.md).
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** When an order is placed, the Order Service must make sure payment, stock reservation, the confirmation email and analytics all happen, without making the customer wait for all of them and without failing the order because one of them is down.
+
+With direct HTTP calls, the Order Service calls each service in turn. A slow email provider slows checkout; analytics being down fails orders; adding a fraud check means changing and redeploying the Order Service.
 
 ```mermaid
 flowchart LR
-    O[order-service] -->|wait| P[payment]
-    O -->|wait| I[inventory]
-    O -->|wait| N[notification: slow]
-    O -->|wait| A[analytics: down]
+    O[order-service] -->|wait| P[payment-service]
+    O -->|wait| I[inventory-service]
+    O -->|wait| N[notification-service: slow]
+    O -->|wait| A[analytics-service: down]
     A --> X[Order fails]
 ```
 
-This is **tight coupling**: the caller must know every receiver, and all of them must be up at the same moment.
-
-## 2. The idea
-
-`order-service` publishes one message, `OrderPlaced`, to a **broker** and moves on. Everyone who cares reads it in their own time. Adding a fraud check means adding a reader; `order-service` doesn't change.
+**How messaging helps.** The Order Service publishes one `OrderPlaced` event to the broker and moves on. Each service reads it in its own time; a new fraud service simply starts reading.
 
 ```mermaid
 flowchart LR
-    O[order-service: producer] -->|OrderPlaced| B[(Broker)]
-    B --> P[payment]
-    B --> I[inventory]
-    B --> N[notification]
-    B --> A[analytics]
-    B --> F[fraud: new, no change to producer]
+    O[order-service] -->|OrderPlaced| B[(Message broker)]
+    B --> P[payment-service]
+    B --> I[inventory-service]
+    B --> N[notification-service]
+    B --> A[analytics-service]
+    B --> F[fraud check: added without changing the producer]
 ```
 
-**What you gain:** decoupling in time (a reader can be down and catch up), in knowledge (the producer doesn't know the readers), load levelling (bursts wait in the broker), and resilience (a slow reader doesn't slow the producer).
+**What it costs.** Results become **eventually consistent**; a message can arrive **twice** or **out of order**; you operate a broker; and debugging now spans several services. Work the customer must see immediately (price, payment authorisation) usually stays a direct call.
 
-**What it costs:** results arrive *eventually*, messages can arrive twice or out of order, and you now run a broker and debug across services.
+**Elsewhere:** in banking, one transaction event feeds SMS, push and statement services independently, so a slow SMS gateway never delays a payment; on a video platform, "transcode this video" commands go on a queue, and a pool of workers takes them one at a time and scales with the backlog.
 
-## 3. Key terms
+## 5. How it works: two families and four questions
 
-| Term | Plain meaning |
-|---|---|
-| **Broker** | The middleman that stores and delivers messages |
-| **Producer / consumer** | Who sends / who receives |
-| **Queue** | Messages wait; each is taken by one consumer and then removed |
-| **Log** | Messages are appended and kept; each reader keeps its own position |
-| **Command** | "Do this", addressed to one receiver (`ChargeCard`) |
-| **Event** | "This happened", for anyone interested (`OrderPlaced`) |
-| **At-least-once delivery** | A message may arrive more than once, never zero times |
-| **Dead-letter queue / topic** | Where messages that keep failing are parked |
-| **Eventual consistency** | All parts agree after a short delay, not instantly |
-
-## 4. The two families, and the four questions
-
-**Queue or log** is the most useful idea in this area:
+**Queue or log** is the most useful distinction in this area:
 
 | | Queue (RabbitMQ, SQS) | Log (Kafka, Kinesis) |
 |---|---|---|
-| Think of it as | **Work to do** | **Facts that happened** |
-| After reading | Removed once acknowledged | Kept until retention ends |
-| Replay | Normally no | Yes |
+| Think of it as | Work to do | Facts that happened |
+| After a message is processed | Removed once acknowledged | Kept until retention ends |
+| Replay | Normally not | Yes, by moving the reader's position |
 | Many independent readers | A queue per reader | Each reader has its own position |
-| Strengths | Routing, task distribution, low latency | Throughput, history, many consumers |
+| Strengths | Flexible routing, task distribution | Throughput, history, many consumers |
+
+The two families are converging: RabbitMQ has added streams, and Kafka has added queue-style **share groups** (early access in 4.0, production-ready in 4.2). The mental model still holds: first decide whether your messages are work to do or facts to keep.
 
 **Every messaging design must answer four questions:**
 
-1. **Delivery:** at most once, at least once, or "exactly once" (in practice: at least once plus idempotent handling)? Most systems use at least once.
-2. **Ordering:** which messages must stay in order? Usually only inside one queue or partition.
-3. **Duplicates:** make consumers **idempotent**, so a second copy is harmless.
-4. **Failures:** retry with backoff, then move a stubborn ("poison") message to a **dead-letter** queue.
+1. **Delivery:** may a message be lost, or repeated? Most systems choose **at-least-once**: not lost (as long as it is retried until processed, within retention), sometimes repeated.
+2. **Ordering:** which messages must stay in order? Usually only those for one entity, such as one order.
+3. **Duplicates:** consumers must be **idempotent**, so a repeated message does no harm.
+4. **Failures:** a message that keeps failing is retried with backoff, then moved to a **dead-letter queue or topic**.
 
-## 5. Real-world examples
+**Who guarantees what:** the broker stores and delivers messages under its stated guarantee; the application decides keys, handles duplicates and failures, and performs side effects. No broker can make an email or an HTTP call happen exactly once on its own.
 
-- **E-commerce order flows:** one `OrderPlaced` event drives payment, stock, emails and analytics, each team owning its own consumer.
-- **Banking notifications:** transactions publish events; SMS, push and statement services consume them independently, so a slow SMS gateway never delays a payment.
-- **Background jobs:** a video platform puts "transcode this video" commands on a queue; a pool of workers takes them one at a time and scales with the backlog.
+## 6. Architectural decisions
 
-## 6. Design choices and trade-offs
+| Use messaging when | Prefer a direct call when | Alternatives |
+|---|---|---|
+| Work can happen after the response | The caller needs the answer now | Synchronous HTTP or gRPC |
+| Several services react to one fact | Exactly one service is involved and must answer | A scheduled batch job |
+| You need to absorb bursts | Strong consistency is required immediately | A shared database (rarely a good idea between services) |
 
-| Choose a queue when | Choose a log when |
-|---|---|
-| Messages are tasks to do once | Messages are facts others may need later |
-| You need flexible routing per message | Many independent readers need the same data |
-| Low latency per message matters most | You need replay, history or very high volume |
-
-**Messaging versus direct calls:** use direct calls when you need an immediate answer (price, authorisation); use messaging when the work can happen after the response (emails, analytics, shipping).
-
-**Industry patterns** (from *Enterprise Integration Patterns*, Hohpe and Woolf): point-to-point channel, publish-subscribe channel, competing consumers, request-reply, dead letter channel, idempotent receiver, and the transactional outbox (microservices track).
+**Queue or log?** Choose a **queue** for tasks done once with rich routing; a **log** when several teams need the same facts, replay, or high volume. The comparison note (2.4) covers this in depth against concrete workloads.
 
 ## 7. Notes in this area, in learning order
 
 | Step | Topic | Status |
 |---|---|---|
 | 2.1 | This overview | Done |
-| 2.2 | Apache Kafka series (2.2.1 to 2.2.18): start at the [Kafka overview](02-kafka/01-kafka-overview.md) | Done |
+| 2.2 | [Apache Kafka series](02-kafka/01-kafka-overview.md) ([2.2.1](02-kafka/01-kafka-overview.md) to [2.2.18](02-kafka/18-multi-cluster-disaster-recovery.md)) | Done |
 | 2.3 | RabbitMQ series (2.3.1 to 2.3.14) | Planned |
 | 2.4 | Choosing a messaging system | Planned |
-| | [Messaging cheat sheet](99-messaging-cheat-sheet.md) (revision) | Growing |
+| | [Messaging glossary](98-messaging-glossary.md) | Revision |
+| | [Messaging cheat sheet](99-messaging-cheat-sheet.md) | Revision |
 
-## 8. Remember
+Industry patterns used throughout come from *Enterprise Integration Patterns* (Hohpe and Woolf): point-to-point channel, publish-subscribe channel, competing consumers, request-reply, dead letter channel, idempotent receiver. The transactional outbox is covered in the microservices track and in [Kafka Connect and CDC](02-kafka/15-kafka-connect-cdc.md).
 
-- **A queue is about work; a log is about facts.**
-- **Messaging trades instant answers for independence.**
-- **At least once + idempotent consumers** is the normal answer to delivery.
-- **Order only inside one queue or partition.**
-- **Name events in the past tense** (`OrderPlaced`), commands in the imperative (`ChargeCard`).
+## 8. Check your understanding
 
-## 9. Interview corner
+1. Why does a slow email provider slow down checkout when the Order Service calls services directly, but not when it publishes an event?
+2. What happens if the Notification Service is down for an hour while orders keep coming, in a queue-based design and in a log-based design?
+3. A consumer sometimes sends two confirmation emails for one order. Which of the four design questions was not answered properly?
+4. The fraud team needs the last 30 days of orders to train a model. Queue or log, and why?
 
-**15-second answer:** "Messaging decouples services through a broker; queues hold work to be done once, logs like Kafka keep facts for many readers and replay."
+Answers are at the end of this note.
 
-**60-second answer:**
-> "With messaging, a producer publishes to a broker and consumers read in their own time, so services are decoupled in time and knowledge, bursts are levelled, and one slow consumer doesn't slow the producer. There are two families: queues, where a message is removed once handled, good for tasks and routing, and logs like Kafka, where events are kept and each reader tracks its own position, good for many consumers and replay. Every design must answer delivery, ordering, duplicates and failures: I use at-least-once delivery with idempotent consumers, keep order with keys, and dead-letter poison messages."
+## 9. Revision
+
+**Remember**
+- Messaging trades **instant answers** for **independence**.
+- A **queue** is about work to do; a **log** is about facts that happened.
+- Every design answers **delivery, ordering, duplicates, failures**.
+- **At-least-once + idempotent consumers** is the usual combination.
+
+**Explain in 15 seconds:** "Messaging decouples services through a broker: the producer publishes and moves on, and consumers process in their own time. Queues hold work done once; logs keep facts for many readers and replay."
+
+**Explain in 60 seconds:**
+> "With messaging, a producer publishes to a broker and consumers read in their own time, so services are decoupled in time and knowledge, bursts are absorbed, and one slow consumer doesn't slow the producer. There are two families: queues, where a message is removed once handled, good for tasks and routing, and logs like Kafka, where events are kept and each reader tracks its position, good for many consumers and replay. The cost is eventual consistency and the possibility of duplicates and reordering, so every design must decide delivery guarantees, ordering scope, idempotent handling and dead-lettering."
 
 **Likely follow-up questions:**
 - **When would you not use messaging?** When the caller needs the answer now, such as a price or a payment authorisation.
-- **Command versus event?** A command asks one receiver to act; an event announces a fact to anyone.
-- **How do you get exactly-once?** In practice, at-least-once delivery plus idempotent processing.
-- **What is a poison message?** One that always fails; after limited retries it goes to a dead-letter queue.
+- **Command or event?** A command asks one receiver to act (`ChargeCard`); an event announces a fact to anyone (`OrderPlaced`).
+- **How do you get "exactly once" across services?** Not end to end: use at-least-once delivery plus idempotent processing, which gives *effectively once*.
+- **What is a poison message?** One that always fails; after limited retries it is moved to a dead-letter queue or topic.
 
-**Architect angle:** "I decide per interaction: synchronous when the user needs the answer now, events when the work can follow, and a log when several teams need the same facts."
+**Architect's takeaway:** decide per interaction: synchronous when the user needs the answer now, events when the work can follow, and a log when several teams need the same facts.
 
-## 10. Industry check
+**Next topic:** [Apache Kafka: the big picture](02-kafka/01-kafka-overview.md) (2.2.1)
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-20 by web search; mostly vendor and blog articles. Re-verify when you revisit the note.
+> Checked 2026-10-20 and 2026-10-21 by web search. Re-verify when you revisit this note.
 
-- **Confirmed:** "log versus queue" is the standard way to compare Kafka and RabbitMQ; common guidance is a log for throughput, replay and many consumers, and a queue for task distribution, routing and low latency. The gap is narrowing: RabbitMQ has added Streams, and Kafka 4.0 has early work on queue-style consumption.
-- **To verify:** the current state of RabbitMQ Streams and Kafka queue support; managed cloud options (SQS and SNS, Azure Service Bus, Google Pub/Sub), covered in 2.4.
+- **Confirmed:** comparing Kafka and RabbitMQ as log versus queue is standard; Kafka retains messages for a configured time and lets each consumer track its position, while RabbitMQ routes messages through exchanges to queues and removes them once acknowledged (vendor and comparison articles); RabbitMQ has added streams; Kafka's queue-style share groups (KIP-932) were early access in 4.0, a preview in 4.1 and production-ready in 4.2 (Apache Kafka 4.2 upgrade notes).
+- **Assumptions and illustrations:** ShopFlow is an illustrative system; the examples describe common patterns, not specific companies.
+- **To verify:** the current status of RabbitMQ streams; client-library support for Kafka share groups; managed alternatives (Amazon SQS and SNS, Azure Service Bus, Google Pub/Sub), to be covered in 2.4.
 - **Decision rule:** start from what the messages are (work or facts), then who reads them and whether they need replay.
 
-## 11. Going further
+**Sources:** Gregor Hohpe and Bobby Woolf, *Enterprise Integration Patterns*; Martin Kleppmann, *Designing Data-Intensive Applications*; Apache Kafka and RabbitMQ documentation.
 
-- Gregor Hohpe and Bobby Woolf, *Enterprise Integration Patterns*
-- Martin Kleppmann, *Designing Data-Intensive Applications* (stream processing)
-- Apache Kafka and RabbitMQ documentation
+## Answers
+
+1. With direct calls the Order Service waits for each response, so the slowest dependency sets checkout time. With an event, it hands one message to the broker and returns; the email is sent later, independently.
+2. In both designs, messages wait in the broker and are processed when the service comes back, so nothing is lost (within the broker's retention or queue limits). In a queue they wait until consumed and are then removed; in a log they stay for the retention period and the service resumes from its saved position.
+3. **Duplicates.** At-least-once delivery means a message can arrive twice; the consumer should record which orders already got an email.
+4. **A log.** A queue keeps messages only until they are consumed, so 30 days of history wouldn't be there. A log with sufficient retention lets the new consumer read the history from the start.
 
 Back to [the index](../README.md) · [Roadmap](../roadmap.md).

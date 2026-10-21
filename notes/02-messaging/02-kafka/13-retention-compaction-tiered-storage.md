@@ -9,173 +9,195 @@ updated: "2026-10-21"
 # Retention, Log Compaction and Tiered Storage
 
 **Messaging · Kafka · Step 2.2.13 · Advanced** · Last updated 2026-10-21
+**Prerequisites:** [The log, topics, partitions and offsets](02-log-topics-partitions-offsets.md) (2.2.2)
+
+## 1. The concept in simple English
+
+**What is it?** Three ways Kafka manages stored data: **retention** deletes old data by age or size; **log compaction** keeps at least the latest event for every key; **tiered storage** moves older data to cheap object storage while keeping it readable.
+
+**Why do we need it?** Disks aren't infinite, but some topics must keep the current state of every key for as long as the topic exists (compaction) and others must keep long history for audits or replay.
+
+**When would I meet it?** Choosing a topic's cleanup policy, sizing disks, handling privacy deletions, or building a topic that new services bootstrap from.
 
 > [!TIP]
-> **In one sentence:** Kafka can forget old events by age or size (retention), keep only the latest event per key forever (log compaction), or move old data to cheap object storage while keeping it readable (tiered storage).
->
-> **Memory hook:** three ways to manage a **paper archive**: shred everything older than a week (retention); keep only the latest version of each customer file (compaction); and move old boxes to a cheap warehouse that you can still fetch from (tiered storage).
+> **Memory hook:** a paper archive: shred boxes older than a week, keep only the latest file per customer, or move old boxes to a cheap warehouse you can still visit.
 
-## Where it fits
+## 2. Mental model: a paper archive
 
-Step 2.2.13, the first advanced note of the [Kafka series](01-kafka-overview.md). It builds on how partitions are stored as segments, from [the log, topics, partitions and offsets](02-log-topics-partitions-offsets.md) (2.2.2). Next: [stream processing basics with Kafka Streams](14-kafka-streams-basics.md) (2.2.14), which uses compacted topics for its state.
+| In the analogy | In Kafka |
+|---|---|
+| Shredding old boxes | **Retention** (`cleanup.policy=delete`) |
+| Keeping only the latest version of each customer file | **Log compaction** (`cleanup.policy=compact`) |
+| A "please destroy this file" note | A **tombstone** |
+| A cheap warehouse | **Tiered storage** (object storage) |
 
-## 1. The story
+**Where the analogy breaks:** compaction isn't instant; for a while a reader can still see older versions of a key. And retention removes whole files (segments), not individual events.
 
-ShopFlow publishes customer profile changes to `customer-profiles`, with the default 7-day retention. A new `recommendation-service` starts and reads the topic from the beginning to build its list of customers. Customers who haven't changed their profile in the last 7 days are simply **missing**. Meanwhile, the compliance team asks to keep a year of `orders` for audits, and keeping that on broker disks would cost a fortune.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Retention** | Deleting old segments by age or size | Sets how far back replay can go | 7 days (default) | Segment |
+| **`cleanup.policy`** | `delete`, `compact`, or both | Chooses the storage model per topic | `compact` | Retention |
+| **Log compaction** | Keeping at least the latest value per key | Topics that represent current state | Customer profiles | Tombstone |
+| **Tombstone** | Key with a null value | Deletes a key in a compacted topic | `cust-42 → null` | `delete.retention.ms` |
+| **Tiered storage** | Older segments in object storage, still readable | Long history at lower cost | A year of orders | Retention |
+| **Storage footprint** | Daily volume × days × replication factor | Disk planning | 50 GB × 7 × 3 | Capacity planning |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** A new Recommendation Service must load every customer's current profile; compliance must keep a year of orders; the disk budget is limited.
+
+`customer-profiles` used the default 7-day retention. When the new service read it from the beginning, customers who hadn't changed their profile in a week were simply **missing**. Keeping a year of `orders` on broker disks would cost far too much.
 
 ```mermaid
 flowchart LR
-    T[customer-profiles: 7-day retention] --> R[recommendation-service reads from the start]
-    R --> X[Customers unchanged for 7+ days: missing]
-    A[Audit: keep orders 1 year] --> D[Broker disks: very expensive]
+    T[customer-profiles: 7-day retention] --> R[New service reads from the start]
+    R --> X[Customers unchanged for over 7 days: missing]
+    A[Audit: keep orders 1 year] --> D[Broker disks: too expensive]
 ```
 
-## 2. The idea
+**How the policies help.** Compact `customer-profiles`, so the latest profile per customer stays; keep `orders` with time-based retention and tiered storage for the long tail.
 
-Choose a storage policy per topic, based on what the topic **means**:
+**What it costs.** Compacted topics aren't histories; tiered reads of old data are slower; deletes take time to take effect.
 
-- **Events that happened** (orders, clicks): keep them for a **time window** (retention), as long as consumers need to replay.
-- **Current state per key** (customer profiles, product catalogue): use **log compaction**. Kafka keeps at least the **latest event for every key**, forever, so a new reader rebuilds the full current state.
-- **Long history** (audits): use **tiered storage**. Recent segments stay on fast broker disks, older ones move to cheap object storage such as S3, and consumers can still read them.
+**Elsewhere:** a compacted product-catalogue topic lets any new service rebuild the full catalogue by reading from the start; a bank keeps a year of transaction events with tiered storage, recent days fast and the rest cheap but replayable; privacy deletions use tombstones in compacted topics, because a retention-only topic can't delete a single event.
+
+## 5. How it works
 
 ```mermaid
 flowchart LR
-    subgraph C[customer-profiles: compacted]
+    subgraph C[customer-profiles, compacted]
         K1[cust-1: v1, v2, v3] --> L1[keeps cust-1 v3]
-        K2[cust-2: v1] --> L2[keeps cust-2 v1]
+        K2[cust-2: v1, then tombstone] --> L2[cust-2 removed later]
     end
-    subgraph O[orders: retention + tiered storage]
+    subgraph O[orders, retention + tiered storage]
         H[Recent segments: broker disk] --> CO[Older segments: object storage, still readable]
     end
 ```
 
-To **delete** a key from a compacted topic, send a **tombstone**: the key with an empty (null) value. Compaction then removes the key, after the tombstone has been kept for a while so slow consumers also see the delete.
-
-## 3. Key terms
-
-| Term | Plain meaning |
-|---|---|
-| **Retention** | Deleting old segments by age or size |
-| **`cleanup.policy`** | `delete` (retention), `compact` (latest per key), or both |
-| **Log compaction** | Keeping at least the last value for each key, removing older ones |
-| **Tombstone** | A record with a key and a null value: "delete this key" |
-| **`delete.retention.ms`** | How long tombstones are kept before removal (default 24 hours) |
-| **Segment** | A file of a partition's log; cleanup works segment by segment |
-| **Tiered storage** | Older segments moved to remote object storage, still readable |
-| **Storage footprint** | Daily volume × days kept × replication factor |
-
-## 4. How it works, step by step
-
-**Retention (`cleanup.policy=delete`):**
-1. Events are appended to the active segment.
-2. Closed segments older than the retention time (or beyond the size limit) are deleted by a periodic cleanup.
-
-**Compaction (`cleanup.policy=compact`):**
-1. A background cleaner reads closed segments.
-2. For each key, it keeps the newest value and removes older ones.
-3. Tombstones remove a key entirely, after `delete.retention.ms`.
-4. Compaction is **eventual**: a reader may still see a few older values for a key, so consumers should simply take the **last value they see** per key.
-
-**Tiered storage:**
-1. Recent segments stay on local broker disk.
-2. Older segments are copied to remote storage and removed locally.
-3. Consumers reading old offsets are served from remote storage transparently (more slowly).
-
-**Sizing storage:** 50 GB per day × 7 days × replication factor 3 ≈ **1 TB** of broker disk for one topic. Retention and replication multiply.
-
-## 5. Real-world examples
-
-- **Reference data:** a product catalogue topic is compacted, so any new service can rebuild the full catalogue by reading it from the start.
-- **Audit and replay:** a bank keeps a year of transaction events with tiered storage, so the recent days are fast and the rest is cheap but still replayable.
-- **Privacy deletions:** a user's data in a compacted topic is removed with a tombstone. In a retention-only topic you can't delete a single event; it disappears only when its segment expires, which matters for privacy requests.
-
-## 6. Design choices and trade-offs
-
-| Policy | Use for | Watch out for |
-|---|---|---|
-| **Delete (retention)** | Event streams: orders, clicks, logs | Data is gone after the window; no per-record delete |
-| **Compact** | Current state per key: profiles, catalogue, settings | Not a history; consumers must handle older values and tombstones |
-| **Compact + delete** | Latest per key, but only for a limited time | Both behaviours at once |
-| **Tiered storage** | Long retention at low cost | Older reads are slower; compacted topics not supported yet |
-
-**Retention is a business decision:** how far back must a new consumer or a bug-fix replay go? Longer retention means more disk, or tiered storage.
-
-## 7. Common mistakes
-
-1. **Using retention for "current state" topics**, so unchanged keys vanish (the story).
-2. **Treating a compacted topic as a full history.**
-3. **Short tombstone retention**, so a slow consumer never sees a delete and keeps stale data.
-4. **Forgetting replication in disk sizing** (×3).
-5. **Promising per-record deletion** on retention-only topics.
-6. **Assuming compaction is instant**; it's background and eventual.
-
-## 8. In code
+1. **Retention:** closed segments older than the limit are deleted by periodic cleanup, whether read or not.
+2. **Compaction:** a background cleaner rewrites closed segments, keeping the newest value per key; tombstones remove a key after `delete.retention.ms` (24 hours by default), so slow consumers still see the delete.
+3. **Compaction is eventual:** consumers should keep "the last value seen" per key and handle older values and tombstones.
+4. **Tiered storage:** recent segments stay local; older ones are copied to remote storage and served from there when read. It's off by default and needs a remote-storage plug-in for your object store; Apache Kafka doesn't ship one.
 
 > [!NOTE]
 > Untested sketch to show the shape.
 
 ```bash
-# Current state per key: compacted
 kafka-topics.sh --bootstrap-server localhost:9092 --create --topic customer-profiles \
   --partitions 6 --replication-factor 3 --config cleanup.policy=compact
-
-# Event stream kept 30 days
-kafka-configs.sh --bootstrap-server localhost:9092 --alter \
-  --entity-type topics --entity-name orders --add-config retention.ms=2592000000
 ```
 
 ```java
-// Delete customer 42 from the compacted topic: a tombstone (null value)
-kafkaTemplate.send("customer-profiles", "cust-42", null);
+kafkaTemplate.send("customer-profiles", "cust-42", null);   // tombstone: delete customer 42's profile
 ```
 
-| Setting | What it controls |
-|---|---|
-| `cleanup.policy` | `delete`, `compact`, or `compact,delete` |
-| `retention.ms` / `retention.bytes` | Age or size limit for retention |
-| `delete.retention.ms` | How long tombstones are kept (default 24 hours) |
-| `min.compaction.lag.ms` | Minimum age before a record may be compacted |
-| `remote.log.storage.system.enable` | Turns on tiered storage on the broker |
+**Sizing example:** 50 GB per day × 30 days × replication factor 3 = 4.5 TB, plus headroom.
 
-## 9. Remember
+## 6. Failure scenarios
 
+### Current-state topic loses old keys
+
+- **What happened?** The story above: retention removed profiles that hadn't changed recently.
+- **Solutions:** compaction for current-state topics.
+- **Trade-offs:** the topic no longer holds history.
+
+### A delete is missed by a slow consumer
+
+- **What happened?** A consumer was down longer than `delete.retention.ms`; the tombstone was removed before it read it, so it kept stale data.
+- **Solutions:** raise tombstone retention above the longest expected consumer outage; rebuild consumers from scratch when needed.
+- **Trade-offs:** tombstones occupy space longer.
+
+### Disk fills after a retention change
+
+- **What happened?** Retention was raised from 7 to 30 days without recalculating disk.
+- **Solutions:** size with volume × days × replication factor; use tiered storage for long retention; alert on disk trends ([2.2.17](17-monitoring-lag-capacity.md)).
+
+## 7. Architectural decisions
+
+| Policy | Use for | Watch out for |
+|---|---|---|
+| Delete (retention) | Event streams | Data gone after the window; no per-record delete |
+| Compact | Current state per key | Not a history; eventual |
+| Compact + delete | Latest per key, for a limited time | Both behaviours |
+| Tiered storage | Long retention at low cost | Slower old reads; not for compacted topics yet; a plug-in to operate |
+
+**Privacy:** in a retention-only topic you can't delete one person's events; they disappear when their segment expires. Compaction with tombstones, or keeping personal data out of events, are the usual answers.
+
+**Common mistakes:** retention on current-state topics; treating a compacted topic as a full history; tombstone retention shorter than the longest consumer outage; forgetting replication in disk sizing; promising per-record deletion on retention-only topics; assuming compaction is instant.
+
+## 8. Try it yourself
+
+> [!NOTE]
+> Status: run on Apache Kafka 4.3.2 (single-node KRaft broker, official binary, macOS) on 2026-10-21; the results below are from that run. The very short timers are for a demonstration only; never use them in production.
+
+**Predict first:** you send several updates for the same keys, then a tombstone for one key. After compaction runs, which records are left, and do the surviving records keep their offsets?
+
+```bash
+kafka-topics.sh --bootstrap-server localhost:9092 --create --topic profiles --partitions 1 --replication-factor 1 \
+  --config cleanup.policy=compact --config segment.ms=1000 --config min.cleanable.dirty.ratio=0.01 \
+  --config delete.retention.ms=1000 --config min.compaction.lag.ms=0
+
+printf 'c1:v1\nc2:v1\nc1:v2\nc1:v3\nc2:NULL\nc3:v1\nc3:v2\n' | kafka-console-producer.sh --bootstrap-server localhost:9092 \
+  --topic profiles --reader-property parse.key=true --reader-property key.separator=: --reader-property null.marker=NULL
+
+# send one more record a few seconds later so the first segment closes and can be compacted, then read the topic:
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic profiles --from-beginning --timeout-ms 6000 \
+  --formatter-property print.key=true --formatter-property print.offset=true --formatter-property print.value=true
+```
+
+**Observe:** in the example run, only `c1 v3` and `c3 v2` (plus the later records) remained; `c2` and its tombstone were gone, and the survivors kept their original offsets, so the offsets of removed records simply no longer exist (the run had one extra earlier record, so its offsets were one higher than the commands above would give after that point). The cleaner took under 20 seconds with these settings. **Break it:** read the topic before the cleaner has run, and see every update still there: compaction is eventual, so a consumer can still see older values and the tombstone for a while. **Clean up:** `kafka-topics.sh --bootstrap-server localhost:9092 --delete --topic profiles`.
+
+## 9. Check your understanding
+
+1. Which policy suits `customer-profiles`, and which suits `orders`?
+2. How do you delete a key from a compacted topic, and when does it disappear?
+3. Can you remove one customer's events from a retention-only topic on request?
+4. Estimate disk for 20 GB/day kept 14 days with replication factor 3.
+
+Answers are at the end of this note.
+
+## 10. Revision
+
+**Remember**
 - **Facts that happened → retention. Current state per key → compaction.**
-- **Compaction keeps the latest value per key; tombstones delete keys.**
-- **Compaction is eventual**: consumers keep the last value they see.
-- **Tiered storage = long retention on cheap storage**, still readable.
-- **Disk = daily volume × days × replication factor.**
+- **Tombstones delete keys**, after `delete.retention.ms`.
+- **Compaction is eventual.**
+- **Tiered storage = long retention on cheap storage.**
+- **Disk = volume × days × replication factor.**
 
-## 10. Interview corner
+**Explain in 15 seconds:** "Retention deletes old segments, compaction keeps the latest value per key for current-state topics, and tiered storage moves old segments to cheap object storage."
 
-**15-second answer:** "Retention deletes old segments by age or size, compaction keeps the latest value per key so a topic can hold current state, and tiered storage moves old segments to cheap object storage."
-
-**60-second answer:**
-> "I choose the cleanup policy from what the topic means. Event streams like orders use time-based retention, sized by how far back consumers need to replay, remembering that disk is daily volume times days times the replication factor. Topics that represent current state per key, like customer profiles, are compacted, so Kafka keeps at least the latest value for every key and new services can rebuild the full state; deletions are tombstones, kept long enough for slow consumers to see them. For long retention, like a year of audit data, tiered storage keeps recent segments on brokers and older ones in object storage, cheaper but slower to read."
+**Explain in 60 seconds:**
+> "I choose the cleanup policy from what a topic means. Event streams like orders use time-based retention sized by replay needs, remembering disk is volume times days times the replication factor. Current-state topics like customer profiles are compacted, so Kafka keeps at least the latest value per key and new services can rebuild state; deletes are tombstones kept long enough for slow consumers to see them. For long retention, tiered storage keeps recent segments on brokers and older ones in object storage, cheaper but slower to read."
 
 **Likely follow-up questions:**
 - **What is a tombstone?** A record with a key and a null value that tells compaction to remove the key.
-- **Is a compacted topic a history?** No. It keeps the latest value per key, not every change.
-- **Can you delete one event from a normal topic?** No, only by retention expiry; use compaction and tombstones when deletions are needed.
-- **When would you use tiered storage?** Long retention where older data is read rarely.
-- **How big will this topic be?** Daily volume × retention days × replication factor.
+- **Is a compacted topic a history?** No: it keeps at least the latest value per key, not every change.
+- **When would you use tiered storage?** Long retention where older data is read rarely, with a remote-storage plug-in you can operate.
 
-**Architect angle:** "Retention and cleanup policy are data-lifecycle decisions: I set them per topic from replay needs, privacy obligations and storage cost."
+**Architect's takeaway:** retention and cleanup policies are data-lifecycle decisions, set per topic from replay, privacy and cost requirements.
 
-## 11. Industry check
+**Next topic:** [Stream processing basics (Kafka Streams)](14-kafka-streams-basics.md) (2.2.14)
+
+## 11. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 by web search (KIP pages, Conduktor, cleanup-strategy articles). Re-verify when you revisit the note.
+> Checked 2026-10-21 by web search. Re-verify when you revisit this note.
 
-- **Confirmed:** `cleanup.policy=compact` keeps messages by key rather than age; tombstones (null values) delete keys; `delete.retention.ms` defaults to 24 hours. Tiered storage (KIP-405, broker setting `remote.log.storage.system.enable`, available from Kafka 3.6) supports append-only delete-retention segments; support for compacted topics in tiered storage (KIP-1272) was still under discussion; with tiering enabled, compaction applies only to local segments.
-- **To verify:** the Kafka version in which tiered storage became fully production-ready; the default `min.compaction.lag.ms`; which internal topics use compaction (for example the consumer offsets topic).
+- **Confirmed:** `cleanup.policy=compact` retains by key rather than age; tombstones (null values) delete keys; `delete.retention.ms` defaults to 24 hours; tiered storage (KIP-405, broker setting `remote.log.storage.system.enable`) was early access from Kafka 3.6 and production-ready from 3.9; it is off by default, Apache Kafka ships no remote-storage plug-in, and it supports delete-retention topics; compacted topics in tiered storage (KIP-1272) were still under discussion; with tiering on, compaction applies to local segments only.
+- **Assumptions and illustrations:** the ShopFlow story; sizing figures are arithmetic examples.
+- **To verify:** the known limitations in the Kafka 3.9 tiered-storage release notes and your plug-in's documentation; default `min.compaction.lag.ms`; which internal topics use compaction.
 - **Decision rule:** retention for events, compaction for current state, tiered storage for long, rarely read history.
 
-## 12. Going further
+**Sources:** Apache Kafka documentation (log compaction, topic configuration); KIP-405; KIP-1272.
 
-- Apache Kafka documentation: log compaction and topic configuration
-- KIP-405 (tiered storage) and KIP-1272 (compacted topics in tiered storage)
-- *Kafka: The Definitive Guide* (compaction)
+## Answers
 
-**Next:** [Stream processing basics (Kafka Streams)](14-kafka-streams-basics.md) (2.2.14).
+1. `customer-profiles`: compaction (current state per key). `orders`: time-based retention, with tiered storage if long history is needed.
+2. Send a tombstone (the key with a null value). Compaction removes the key after the tombstone has been kept for `delete.retention.ms`; until compaction runs, older values may still be visible.
+3. Not individually: retention removes whole segments by age. Use compaction with tombstones, keep personal data out of events, or rely on retention expiry.
+4. 20 × 14 × 3 = **840 GB**, plus headroom.
 
-Back to [the Kafka overview](01-kafka-overview.md) · [Messaging overview](../01-messaging-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).
+Back to [the Kafka overview](01-kafka-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).

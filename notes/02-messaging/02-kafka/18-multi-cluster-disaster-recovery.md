@@ -9,36 +9,62 @@ updated: "2026-10-21"
 # Multi-Cluster and Disaster Recovery
 
 **Messaging · Kafka · Step 2.2.18 · Advanced** · Last updated 2026-10-21
+**Prerequisites:** [Replication](06-brokers-replication-leader-election.md) (2.2.6), [Kafka Connect](15-kafka-connect-cdc.md) (2.2.15)
+
+## 1. The concept in simple English
+
+**What is it?** Protecting against the loss of a whole region by running a second Kafka cluster elsewhere, keeping it in sync (for example with **MirrorMaker 2**), and having a tested plan to move producers and consumers over.
+
+**Why do we need it?** Replication inside one cluster survives broker and zone failures, not a regional outage.
+
+**When would I meet it?** Business-continuity requirements, regulated industries, or global applications serving several regions.
 
 > [!TIP]
-> **In one sentence:** replication inside one cluster survives broker and zone failures, but surviving the loss of a whole region needs a second cluster, kept in sync with a tool like MirrorMaker 2, plus a tested plan for moving producers and consumers over.
->
-> **Memory hook:** a **spare house key**. A copy on your keyring (replicas in the same cluster) doesn't help if you lose the whole bag. Leave one with a trusted neighbour in another street (a second cluster in another region), and practise using it before the day you're locked out.
+> **Memory hook:** a spare key left with a neighbour in another street, and practising using it before you're locked out.
 
-## Where it fits
+## 2. Mental model: a spare key
 
-Step 2.2.18, the last note of the [Kafka series](01-kafka-overview.md). It extends [replication](06-brokers-replication-leader-election.md) (2.2.6) beyond one cluster, uses [Kafka Connect](15-kafka-connect-cdc.md) (2.2.15), on which MirrorMaker 2 is built, and relies on consumers being [idempotent](05-offset-commits-delivery-guarantees.md) (2.2.5). It links to [testing resilience](../../01-resilience/10-testing-resilience.md) for failover drills.
+| In the analogy | In Kafka |
+|---|---|
+| Keys on your keyring | Replicas within one cluster |
+| A spare key with a neighbour elsewhere | A second cluster in another region |
+| Copying keys regularly | Replication between clusters (MirrorMaker 2) |
+| Practising getting in | Failover drills |
 
-## 1. The story
+**Where the analogy breaks:** a spare key is an exact copy; the second cluster is **slightly behind** (asynchronous copying), so the latest events may be missing at failover.
 
-ShopFlow's Kafka cluster ran in one cloud region across three availability zones, so the team felt safe. Then the **whole region** had a long outage, and with it every topic: no orders, no payments, for hours. Afterwards they quickly copied topics to a second region, but on the first failover test, consumers in the new region **started from the wrong place**: some reprocessed a week of events, others skipped what hadn't been copied yet.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Disaster recovery (DR)** | Restoring service after a large failure | Business continuity | Region outage | Failover |
+| **RPO** (recovery point objective) | How much data you can afford to lose | Shapes replication design | 1 minute of events | Replication lag |
+| **RTO** (recovery time objective) | How long you can be down | Shapes runbooks and automation | 30 minutes | Failover |
+| **Active-passive** | One cluster serves, one stands by | Simpler | Primary and DR region | Active-active |
+| **Active-active** | Both serve and copy to each other | Local latency; complex | Two regions writing | Conflicts |
+| **MirrorMaker 2** | Connect-based tool copying topics between clusters | Kafka's standard DR tool | Primary → DR | Checkpoints |
+| **Offset translation** | Mapping consumer positions to the other cluster | Consumers resume near where they were | Checkpoint records | At-least-once |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** Orders must keep flowing during a regional cloud outage, within agreed limits on data loss and downtime.
+
+ShopFlow's cluster spanned three availability zones in one region, so the team felt safe, until the **whole region** went down for hours. A hastily built second cluster then failed its first test: consumers resumed from the **wrong positions**, some replaying a week, others skipping uncopied events.
 
 ```mermaid
 flowchart LR
-    R[Region A: whole region down] --> K[(Only Kafka cluster: 3 zones, all in region A)]
+    R[Region A outage] --> K[(Only cluster, 3 zones, all in region A)]
     K --> X[Shop stops for hours]
-    T[Failover test to region B] --> W[Consumers start at the wrong offsets]
+    T[First failover test] --> W[Consumers resume at wrong offsets]
 ```
 
-## 2. The idea
+**How DR helps.** A standby cluster in region B is kept in sync by MirrorMaker 2, which also writes **checkpoints** for consumer offsets; a rehearsed runbook moves traffic.
 
-Match the protection to the failure:
+**What it costs.** A second cluster, cross-region traffic, operational practice, and an RPO above zero.
 
-- **Broker failure:** replication factor 3 (2.2.6).
-- **Zone failure:** replicas spread across zones in one cluster (2.2.6).
-- **Region failure:** a **second cluster in another region**, continuously copied.
+**Elsewhere:** regulated banks mirror payment topics to a second region and rehearse failover against tested recovery times; global consumer apps run a cluster per region for local writes (active-active) and copy only the events needed everywhere; stores or factories run small edge clusters that copy their topics into one central cluster for analytics.
 
-**MirrorMaker 2** (MM2), built on Kafka Connect, copies topics from one cluster to another and records **checkpoints** that map consumer positions on the source to positions on the target. On failover, consumers use the checkpoints to **resume close to where they were**. Because copying is asynchronous, the very latest events may not have arrived, and some may be read twice, so consumers must handle **at-least-once** delivery.
+## 5. How it works
 
 ```mermaid
 flowchart LR
@@ -46,137 +72,121 @@ flowchart LR
         PA[Producers] --> KA[(Kafka A)]
         KA --> CA[Consumers]
     end
-    subgraph B[Region B: disaster recovery]
+    subgraph B[Region B: standby]
         KB[(Kafka B)]
         CB[Consumers, started on failover]
     end
-    KA -->|MirrorMaker 2: topics + offset checkpoints| KB
+    KA -->|MirrorMaker 2: topics and offset checkpoints| KB
     KB -.-> CB
 ```
 
-## 3. Key terms
+1. **Normal operation:** producers and consumers use the primary; MirrorMaker 2 (usually run near the standby) copies chosen topics and writes checkpoints; schemas, ACLs and configs are kept in step. With the default replication policy, the copy of `orders` on the standby is named `primary.orders` (the source cluster's alias is the prefix), so consumers and configuration must use that name after failover; the identity policy keeps the original names but can break offset translation and isn't suited to active-active.
+2. **Planned failover:** stop producers, wait for replication to catch up, start consumers on the standby from translated offsets, move producers.
+3. **Emergency failover:** redirect traffic at once and accept that uncopied events may be lost (your real RPO); consumers resume from translated offsets and may see duplicates.
 
-| Term | Plain meaning |
+**Who guarantees what**
+
+| Layer | Responsible for |
 |---|---|
-| **Disaster recovery (DR)** | Restoring service after a large failure, such as a region outage |
-| **RPO** (recovery point objective) | How much data you can afford to lose, as time |
-| **RTO** (recovery time objective) | How long you can afford to be down |
-| **Active-passive** | One cluster serves traffic; the other is a standby copy |
-| **Active-active** | Both clusters serve traffic and copy to each other |
-| **MirrorMaker 2** | Kafka's Connect-based tool for copying topics between clusters |
-| **Offset translation** | Mapping a consumer's position on the source cluster to the matching position on the target |
-| **Failover / failback** | Moving to the standby / moving back afterwards |
-
-## 4. How it works, step by step
-
-**Normal operation (active-passive):**
-1. Producers and consumers use the primary cluster.
-2. MM2, usually running near the standby cluster, copies the chosen topics and writes checkpoints for consumer groups.
-3. Schemas, ACLs and topic settings are kept in step on the standby too.
-
-**Planned failover:**
-1. Stop producers on the primary.
-2. Wait until replication has caught up.
-3. Start consumers on the standby from their translated positions.
-4. Point producers at the standby.
-
-**Emergency failover:**
-1. Redirect producers and consumers to the standby immediately.
-2. Accept that events not yet copied may be lost (that gap is your real RPO).
-3. Consumers resume from translated positions and may see some duplicates.
-
-## 5. Real-world examples
-
-- **Banks:** regulators expect regional disaster recovery with tested recovery times, so payment topics are mirrored to a second region and failover is rehearsed regularly.
-- **Global consumer apps:** each region runs its own cluster for local writes and low latency (active-active), and events needed everywhere are copied between regions.
-- **Edge to centre:** many small clusters in stores or factories copy their topics into one central cluster for analytics (aggregation).
-
-## 6. Design choices and trade-offs
-
-| Setup | Protects against | RPO / RTO | Cost and complexity |
-|---|---|---|---|
-| One cluster, replicas across zones | Broker and zone failures | No loss, quick recovery, within the region only | Lowest |
-| **Active-passive with MM2** | Region failure | Small data loss (replication lag); minutes to hours, depending on the runbook | Second cluster, mostly idle; failover practice |
-| **Active-active** | Region failure, plus local latency | Lower RTO | Highest: two-way copying, conflicts, per-key ordering across regions |
-
-**Asynchronous copying means RPO is never zero.** If the business needs zero loss across regions, that is a different, much more expensive design, and worth questioning.
-
-**Replicate selectively:** copy the topics that matter for recovery, not everything.
-
-## 7. Common mistakes
-
-1. **Treating multiple zones as disaster recovery** for a regional outage.
-2. **No offset translation**, so consumers restart at the beginning or the end.
-3. **Never testing failover**: the runbook fails on the real day.
-4. **Forgetting schemas, ACLs and configs** on the standby cluster.
-5. **Consumers that aren't idempotent**, so duplicates after failover cause damage.
-6. **Active-active without a plan** for conflicting writes to the same key.
-7. **Replicating every topic**, paying for data nobody needs in a disaster.
-
-## 8. In code
+| Each cluster | Its own replication and durability |
+| MirrorMaker 2 | Asynchronous topic copying; offset checkpoints (approximate) |
+| Application | Idempotent consumers; switching bootstrap servers |
+| Operations | Runbooks, drills, keeping schemas and ACLs in step |
 
 > [!NOTE]
-> Untested sketch to show the shape. Check the replication policy and property names for your version.
+> Untested sketch. Check the replication policy and property names for your version.
 
 ```properties
-# mm2.properties: copy selected topics and consumer positions from primary to dr
 clusters = primary, dr
 primary.bootstrap.servers = kafka-a:9093
 dr.bootstrap.servers = kafka-b:9093
-
 primary->dr.enabled = true
 primary->dr.topics = orders, payments, customer-profiles
-primary->dr.groups = .*
 sync.group.offsets.enabled = true
-replication.factor = 3
 ```
 
-| Setting | What it controls |
-|---|---|
-| `clusters` and `*.bootstrap.servers` | Which clusters are connected |
-| `primary->dr.enabled` / `.topics` | Direction and which topics are copied |
-| `sync.group.offsets.enabled` | Copying translated consumer positions to the target |
-| Replication policy | How replicated topics are named on the target |
+## 6. Failure scenarios
 
-## 9. Remember
+### Region outage with no second cluster
 
+- **What happened?** The story above.
+- **Solutions:** a standby cluster in another region with mirrored topics.
+- **Trade-offs:** cost and practice.
+
+### Consumers resume at the wrong position
+
+- **What happened?** No offset translation during failover.
+- **Solutions:** MirrorMaker 2 checkpoints and synchronised group offsets; idempotent consumers for the approximate overlap.
+- **Trade-offs:** some duplicates after failover.
+
+### Standby missing schemas or ACLs
+
+- **What happened?** Topics were mirrored, but the schema registry and ACLs weren't.
+- **What the business sees:** services fail to start or deserialize after failover.
+- **Solutions:** treat schemas, ACLs and configs as part of DR; test them in drills.
+
+## 7. Architectural decisions
+
+| Setup | Protects against | RPO / RTO | Complexity |
+|---|---|---|---|
+| One cluster across zones | Broker and zone failures | No loss, quick recovery, within the region | Lowest |
+| **Active-passive with MirrorMaker 2** | Region failure | Small loss (replication lag); minutes to hours | Medium |
+| Active-active | Region failure, plus local latency | Lower RTO | Highest: conflicts, ordering across regions |
+
+Asynchronous copying means RPO is never zero. Agree RPO and RTO with the business first; replicate only the topics needed for recovery.
+
+**Common mistakes:** treating multiple zones as regional DR; no offset translation; never testing failover; forgetting schemas, ACLs and configs on the standby; consumers that aren't idempotent; active-active without a plan for conflicting writes; replicating every topic.
+
+## 8. Check your understanding
+
+1. Is a three-zone cluster a disaster-recovery solution? Against what?
+2. Why must consumers be idempotent after a failover?
+3. What is the difference between planned and emergency failover?
+4. What besides topics must be ready on the standby cluster?
+
+Answers are at the end of this note.
+
+## 9. Revision
+
+**Remember**
 - **Replicas cover brokers and zones; a second cluster covers regions.**
-- **MM2 copies topics and checkpoints consumer positions.**
-- **Asynchronous copying: RPO above zero; consumers must handle duplicates.**
-- **Planned failover: stop, drain, switch. Emergency: switch now, accept a gap.**
-- **Practise failover; replicate schemas and ACLs too.**
+- **MirrorMaker 2 copies topics and checkpoints consumer positions.**
+- **Asynchronous copying: RPO above zero; duplicates possible.**
+- **Planned: stop, drain, switch. Emergency: switch now, accept a gap.**
+- **Rehearse failover; mirror schemas and ACLs too.**
 
-## 10. Interview corner
+**Explain in 15 seconds:** "Within a region, replicas across zones protect Kafka; for a region outage I run a second cluster kept in sync with MirrorMaker 2, with offset checkpoints and a rehearsed failover runbook."
 
-**15-second answer:** "Within a region, replicas across zones protect Kafka; for a region outage I run a second cluster kept in sync with MirrorMaker 2, with offset checkpoints and a rehearsed failover runbook."
-
-**60-second answer:**
-> "I match protection to the failure. Replication factor 3 across availability zones covers broker and zone failures. For a region failure I run a second cluster, usually active-passive, with MirrorMaker 2 copying the important topics and writing checkpoints so consumers can resume from translated offsets. Copying is asynchronous, so RPO is the replication lag rather than zero, and consumers must be idempotent because they may reprocess some events after failover. The runbook covers planned failover, where we stop producers and let replication catch up, and emergency failover, where we switch immediately and accept a small gap. Schemas, ACLs and configs are kept in step, and the failover is rehearsed regularly."
+**Explain in 60 seconds:**
+> "I match protection to the failure: replication factor 3 across zones covers broker and zone failures; a region failure needs a second cluster, usually active-passive, with MirrorMaker 2 copying the important topics and writing checkpoints so consumers resume from translated offsets. Copying is asynchronous, so RPO is the replication lag and consumers must be idempotent. Planned failover drains replication first; emergency failover switches immediately and accepts a small gap. Schemas, ACLs and configs are part of the plan, and we rehearse it."
 
 **Likely follow-up questions:**
 - **RPO versus RTO?** How much data you can lose versus how long you can be down.
-- **Is a multi-zone cluster a DR solution?** Not for a regional outage; it protects against zone failure only.
-- **How do consumers know where to resume?** MirrorMaker 2 checkpoints translate their offsets to the target cluster.
-- **Why must consumers be idempotent?** Translated offsets are approximate, so some events are read again.
 - **When would you choose active-active?** When both regions must serve local traffic and recovery must be fast, accepting conflict handling and more complexity.
+- **Why run MirrorMaker 2 near the target cluster?** Consuming across the region boundary and producing locally is the recommended, more robust setup.
 
-**Architect angle:** "I agree RPO and RTO with the business first, choose the topology that meets them at a sensible cost, and treat failover as a rehearsed procedure, not a diagram."
+**Architect's takeaway:** agree RPO and RTO first, choose the cheapest topology that meets them, and treat failover as a rehearsed procedure.
 
-## 11. Industry check
+**Next topic:** this completes the Kafka series. Revise with the [messaging cheat sheet](../99-messaging-cheat-sheet.md), then continue with the RabbitMQ series (2.3) in the [roadmap](../../roadmap.md).
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 by web search (Red Hat developer article, Lenses, BigData Boutique and replication guides). Re-verify when you revisit the note.
+> Checked 2026-10-21 by web search. Re-verify when you revisit this note.
 
-- **Confirmed:** MirrorMaker 2 is commonly used for disaster recovery; offset *replication* (`sync.group.offsets.enabled`) differs from offset *translation* through checkpoint records written by the checkpoint connector; translated offsets can leave small gaps or duplicates, so consumers should handle at-least-once; running MM2 on or near the standby cluster is recommended; planned failover stops producers, lets replication catch up, then moves consumers, while emergency failover redirects traffic and accepts losing unreplicated messages; one source warns that a replication policy keeping identical topic names can break offset translation.
-- **To verify:** how replicated topics are named under the default replication policy; vendor alternatives (for example cluster-linking or managed replicator features) and their offset behaviour; stretched clusters across regions.
-- **Decision rule:** zones for availability, a second cluster for regional DR, RPO and RTO agreed with the business, idempotent consumers, rehearsed failover.
+- **Confirmed:** MirrorMaker 2 is commonly used for DR; offset replication (`sync.group.offsets.enabled`) differs from offset translation via checkpoint records; translated offsets can leave small gaps or duplicates, so consumers should handle at-least-once; running MirrorMaker 2 near the standby is recommended; planned failover drains replication first, emergency failover accepts losing unreplicated messages; an identity replication policy can break offset translation (Red Hat Developer, Lenses, BigData Boutique).
+- **Assumptions and illustrations:** the ShopFlow story; configuration (not run); RPO and RTO examples.
+- **Also confirmed:** `DefaultReplicationPolicy` prefixes remote topics with the source cluster alias and a dot; `IdentityReplicationPolicy` keeps names and doesn't support active-active (Apache Kafka MirrorMaker 2 Javadoc; Aiven documentation).
+- **To verify:** vendor alternatives (cluster linking, managed replicators); stretched clusters across regions.
+- **Decision rule:** zones for availability, a second cluster for regional DR, agreed RPO and RTO, idempotent consumers, rehearsed failover.
 
-## 12. Going further
+**Sources:** Apache Kafka documentation (geo-replication); Red Hat Developer, "Demystifying Kafka MirrorMaker 2"; AWS Well-Architected Reliability pillar.
 
-- Apache Kafka documentation: geo-replication (MirrorMaker 2)
-- Red Hat Developer, "Demystifying Kafka MirrorMaker 2"
-- AWS Well-Architected Reliability pillar: disaster recovery objectives
+## Answers
 
-**This completes the Kafka series.** Revise with the [messaging cheat sheet](../99-messaging-cheat-sheet.md).
+1. It protects against broker and zone failures inside one region, not against losing the whole region.
+2. Offset translation is approximate and copying is asynchronous, so some events are processed again after failover.
+3. Planned: stop producers, let replication catch up, then switch, with no data loss. Emergency: switch immediately, accepting loss of events not yet copied.
+4. Schemas (and the schema registry), ACLs and credentials, topic configurations, consumer offsets, and client configuration to point at the standby.
 
-Back to [the Kafka overview](01-kafka-overview.md) · [Messaging overview](../01-messaging-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).
+Back to [the Kafka overview](01-kafka-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).

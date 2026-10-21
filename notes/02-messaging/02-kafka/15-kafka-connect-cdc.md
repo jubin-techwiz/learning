@@ -9,38 +9,63 @@ updated: "2026-10-21"
 # Kafka Connect and Change Data Capture
 
 **Messaging · Kafka · Step 2.2.15 · Advanced** · Last updated 2026-10-21
+**Prerequisites:** [Error handling and DLTs](08-error-handling-retries-dlt.md) (2.2.8), [Offset commits](05-offset-commits-delivery-guarantees.md) (2.2.5)
+
+## 1. The concept in simple English
+
+**What is it?** **Kafka Connect** moves data between Kafka and other systems using ready-made connectors. **Change data capture (CDC)** streams every committed database change into Kafka by reading the database's own change log.
+
+**Why do we need it?** Custom integration code is repeated, fragile and often wrong: polling misses deletes, and writing to a database and then to Kafka can leave the two disagreeing.
+
+**When would I meet it?** Syncing a search index or data warehouse, streaming changes out of a legacy database, or publishing domain events reliably from a database-backed service.
 
 > [!TIP]
-> **In one sentence:** Kafka Connect moves data between Kafka and other systems using ready-made connectors instead of custom code, and change data capture (CDC) streams every committed database change into Kafka by reading the database's own log.
->
-> **Memory hook:** Connect is a set of **standard pipes and adapters** for plumbing: you don't weld a new pipe for every sink. CDC is like **reading the shop's till roll**: instead of asking the cashier "what changed?" every minute, you read the printed record of every sale, in order, as it happens.
+> **Memory hook:** CDC reads the till roll instead of asking the cashier every minute what changed.
 
-## Where it fits
+## 2. Mental model: a shop's till roll
 
-Step 2.2.15 of the [Kafka series](01-kafka-overview.md). It applies [error handling and DLTs](08-error-handling-retries-dlt.md) (2.2.8) to integration pipelines and introduces the outbox pattern (covered fully in the microservices track). Next: [security with TLS, SASL and ACLs](16-security-tls-sasl-acls.md) (2.2.16).
+| In the analogy | In the real system |
+|---|---|
+| The till roll, printed for every sale in order | The database's change log (MySQL **binlog**) |
+| Reading the roll | A **CDC source connector** (Debezium) |
+| Standard pipes to other branches | **Sink connectors** |
+| Asking the cashier "anything new?" every minute | Query-based polling |
 
-## 1. The story
+**Where the analogy breaks:** after a crash, a CDC connector may re-read part of the roll it had already sent, so downstream consumers can see **duplicates**.
 
-ShopFlow needs orders in three places besides MySQL: the search index, the data warehouse and Kafka for other services. Each team writes its own glue. A cron job polls MySQL every minute and **misses deleted orders**. Another adds load to the production database at peak time. And `order-service` writes to MySQL and then publishes to Kafka: when it crashes between the two, **the database and Kafka disagree**, an order exists but no event was ever sent.
+## 3. Industry terms
+
+| Term | Simple meaning | Why it matters | Example | Related terms |
+|---|---|---|---|---|
+| **Kafka Connect** | Runtime for connectors | Integration as configuration | Connect cluster | Worker, task |
+| **Source / sink connector** | Into Kafka / out of Kafka | Standard behaviour and error handling | Debezium MySQL / search sink | Converter |
+| **Change data capture (CDC)** | Streaming committed changes | No polling; includes deletes | Debezium reading the binlog | Snapshot |
+| **Binlog** | MySQL's ordered log of committed changes | The source CDC reads | MySQL replication log | Snapshot |
+| **Dual write** | Writing to two systems separately | They can disagree after a crash | MySQL then Kafka | Outbox |
+| **Transactional outbox** | Event written to an outbox table in the same database transaction | One local transaction; no dual write | `outbox` table | CDC |
+| **Dead-letter queue (DLQ)** | Connect's name for parking bad records | Keeps sink connectors running | `errors.deadletterqueue.topic.name` | DLT |
+
+## 4. In a real system (ShopFlow)
+
+**The business problem.** Orders must appear in the search index and the data warehouse, and other services must receive `OrderPlaced` reliably, without the database and Kafka ever disagreeing permanently.
+
+The Order Service wrote the order to MySQL and then published to Kafka: after a crash between the two, an order existed with **no event**. A cron job polling MySQL every minute **missed deleted orders** and added load at peak times.
 
 ```mermaid
 flowchart LR
-    O[order-service] -->|1 write| DB[(MySQL)]
+    O[order-service] -->|1 insert order| DB[(MySQL)]
     O -.->|2 publish, crash before this| K[(Kafka)]
     CR[Cron job polling every minute] --> DB
     CR -->|misses deletes, adds load| S[Search index]
-    X[DB and Kafka disagree] -.-> O
 ```
 
-That last problem is the **dual-write problem**: two writes to two systems can't be made atomic by the application alone.
+**How Connect and CDC help.** The Order Service writes the order **and** an outbox row in one database transaction. Debezium reads the binlog and publishes the outbox row to Kafka. Sink connectors keep search and the warehouse in sync.
 
-## 2. The idea
+**What it costs.** Events arrive **eventually**, not instantly; CDC is **at-least-once**, so consumers must be idempotent; you operate a Connect cluster and need binlog access.
 
-Use **Kafka Connect** and **CDC** instead of custom glue:
+**Elsewhere:** product and order changes flow through CDC into a search index within seconds, deletes included; data platforms stream operational databases into a lake or warehouse instead of nightly extracts; teams stream changes out of a legacy system's database without touching its code, so new services can react to them.
 
-- A **source connector** for MySQL, such as **Debezium**, reads the database's **binlog**, its ordered record of committed changes, and publishes every insert, update and delete to Kafka topics. No polling, no missed deletes, little load.
-- **Sink connectors** copy topics into the search index and the warehouse.
-- For clean business events, `order-service` writes the event to an **outbox table** in the same database transaction as the order, and CDC publishes it. One local transaction, so the database and Kafka can't disagree.
+## 5. How it works
 
 ```mermaid
 flowchart LR
@@ -49,141 +74,121 @@ flowchart LR
     D --> K[(Kafka topics)]
     K --> ES[Sink connector: search index]
     K --> DW[Sink connector: data warehouse]
-    K --> SV[Other services]
+    K --> SV[Other services, idempotent]
 ```
 
-## 3. Key terms
+1. **First start:** Debezium takes a **consistent snapshot** of the selected tables (old binlogs are purged, so history isn't available from the log alone).
+2. It then reads the binlog from the snapshot position, turning each committed change into an event, keyed by primary key.
+3. It stores its position; after a restart it resumes from the last stored position. After a crash, **some events may be sent again**. Kafka 3.3 added optional exactly-once support for source connectors (KIP-618), when the workers enable it and the connector supports it; consumers still need idempotency for their own side effects, so design for at-least-once.
+4. **Sink connectors** read topics like consumer groups and write to targets. On a bad record a task **stops by default**; with `errors.tolerance=all` it skips bad records and can send them to a **DLQ** with error headers. Source connectors have no DLQ.
 
-| Term | Plain meaning |
+**Who guarantees what**
+
+| Layer | Responsible for |
 |---|---|
-| **Kafka Connect** | A framework and runtime for moving data in and out of Kafka with connectors |
-| **Source / sink connector** | Reads from a system into Kafka / writes from Kafka into a system |
-| **Worker / task** | A Connect process / a unit of a connector's work |
-| **Converter** | Turns records into bytes and back (JSON, Avro, Protobuf) |
-| **Single Message Transform (SMT)** | A small per-record change (rename a field, route to a topic) |
-| **Change data capture (CDC)** | Streaming committed database changes as events |
-| **Binlog** | MySQL's ordered log of committed changes, used for replication |
-| **Transactional outbox** | An outbox table written in the same transaction as business data, then published |
-| **Dual write** | Writing to two systems separately: they can end up disagreeing |
-
-## 4. How it works, step by step
-
-**A Debezium MySQL source connector:**
-1. On first start it takes a **consistent snapshot** of the selected tables (MySQL purges old binlogs, so history isn't available from the log alone).
-2. It then reads the **binlog from the snapshot's position**, turning each committed change into an event.
-3. Events go to topics (typically one per table), keyed by primary key, so per-row order is kept.
-4. Its position is stored, so after a restart it continues where it stopped.
-
-**A sink connector:**
-1. Reads topics like a consumer group.
-2. Converts records and applies any SMTs.
-3. Writes to the target (search index, warehouse, another database).
-4. On a bad record, by default the **task stops**; with `errors.tolerance=all` it skips bad records, and a **dead-letter queue topic** can hold them with the failure reason in headers.
-
-## 5. Real-world examples
-
-- **Search sync:** product and order changes flow from the database through CDC into a search index within seconds, including deletes.
-- **Data platforms:** CDC streams operational databases into a data lake or warehouse, replacing nightly batch extracts.
-- **Legacy integration:** a team streams changes out of an old system's database with CDC, without touching its code, so new services can react to them.
-
-## 6. Design choices and trade-offs
-
-| Approach | Gives | Costs |
-|---|---|---|
-| Custom consumer or producer code | Full control | Repeated plumbing, retries, offsets, monitoring for every integration |
-| **Connect with ready-made connectors** | Configuration instead of code; standard error handling and scaling | Another runtime to operate; connector quality varies |
-| Query-based polling | Simple | Misses deletes, adds database load, coarse timing |
-| **Log-based CDC (Debezium)** | Every committed change in order, including deletes; low load | Needs binlog access and retention; snapshots on first start |
-| CDC on raw business tables | Quick | Exposes the internal table design as a public contract |
-| **CDC on an outbox table** | Clean, intentional events; no dual write | An outbox table and routing configuration |
-
-## 7. Common mistakes
-
-1. **Dual writes** (database, then Kafka) and hoping nothing crashes in between.
-2. **Publishing raw table changes as the public contract**, so every schema change breaks consumers.
-3. **A connector down longer than the binlog is kept**, forcing a fresh snapshot.
-4. **`errors.tolerance=all` without a DLQ or alerts**: bad records vanish silently.
-5. **Expecting a DLQ on source connectors**; sink connectors have one, source connectors don't.
-6. **Not monitoring connector and task status**: a failed task can sit unnoticed.
-
-## 8. In code
+| Database | Committing the order and the outbox row atomically; keeping the binlog |
+| Debezium / Connect | Reading every committed change in order (at-least-once) |
+| Kafka | Storing and delivering the events |
+| Consumers | Idempotent handling of duplicates |
+| Sink targets | Their own write semantics (idempotent upserts are safest) |
 
 > [!NOTE]
-> Untested sketch to show the shape. Connector property names change between versions; check the connector's documentation.
+> Untested sketch to show the shape. Connector property names change between versions.
 
 ```json
-{
-  "name": "shopflow-orders-cdc",
+{ "name": "shopflow-outbox-cdc",
   "config": {
     "connector.class": "io.debezium.connector.mysql.MySqlConnector",
     "database.hostname": "mysql",
-    "database.user": "cdc_user",
     "topic.prefix": "shopflow",
     "table.include.list": "shop.outbox",
-    "snapshot.mode": "initial"
-  }
-}
+    "snapshot.mode": "initial" } }
 ```
 
-```json
-{
-  "name": "orders-to-search",
-  "config": {
-    "connector.class": "<your search sink connector>",
-    "topics": "order-events",
-    "errors.tolerance": "all",
-    "errors.deadletterqueue.topic.name": "order-events-dlq",
-    "errors.deadletterqueue.context.headers.enable": "true"
-  }
-}
-```
+## 6. Failure scenarios
 
-| Setting | What it controls |
-|---|---|
-| `snapshot.mode` | Whether and how the source takes an initial snapshot |
-| `table.include.list` | Which tables are captured |
-| `errors.tolerance` | Stop on errors (default) or skip bad records |
-| `errors.deadletterqueue.*` | DLQ topic and failure headers (sink connectors) |
+### Dual write leaves database and Kafka inconsistent
 
-## 9. Remember
+- **What happened?** The story above.
+- **Solutions:** transactional outbox + CDC (or a polling relay of the outbox table).
+- **Trade-offs:** an outbox table, a relay or connector, and eventual (not immediate) publication.
 
-- **Connectors instead of custom glue.**
-- **CDC reads the database's log**: every committed change, in order, including deletes.
-- **Dual writes can disagree; the outbox + CDC fixes it.**
-- **Publish clean events (outbox), not raw tables.**
-- **Sink DLQ yes, source DLQ no; monitor tasks.**
+### Connector restart sends duplicates
 
-## 10. Interview corner
+- **What happened?** The CDC connector crashed and resumed from its last stored position, re-sending recent changes.
+- **What the business sees:** duplicate events downstream.
+- **Solutions:** idempotent consumers keyed by event or row ID; idempotent upserts in sinks.
+- **Trade-offs:** deduplication state.
 
-**15-second answer:** "Kafka Connect moves data in and out of Kafka with ready-made connectors; CDC with Debezium streams committed database changes from the binlog, and combined with an outbox table it avoids dual writes."
+### Connector down longer than binlog retention
 
-**60-second answer:**
-> "For integrations I use Kafka Connect instead of writing custom producers and consumers: source connectors bring data in, sink connectors write it out, with converters, small transforms and standard error handling, including a dead-letter queue for sink connectors. For databases I prefer log-based change data capture: Debezium takes a consistent snapshot, then reads MySQL's binlog, so every committed insert, update and delete arrives in order, without polling. To publish business events without dual writes, the service writes the event to an outbox table in the same transaction as its data, and CDC publishes it. That way the event contract is intentional, not the raw table design."
+- **What happened?** The binlog position it needed had been purged.
+- **Solutions:** monitor connectors; keep enough binlog retention; re-snapshot.
+- **Trade-offs:** re-snapshots take time and load the database.
+
+## 7. Architectural decisions
+
+| Approach | Gives | Costs |
+|---|---|---|
+| Custom producers and consumers | Full control | Repeated plumbing and error handling |
+| **Connect with ready-made connectors** | Configuration instead of code | A runtime to operate; connector quality varies |
+| Query-based polling | Simple | Misses deletes; database load; coarse timing |
+| **Log-based CDC** | Every committed change, in order, including deletes | Binlog access; snapshots |
+| CDC on raw business tables | Quick | Internal schema becomes a public contract |
+| **CDC on an outbox table** | Intentional events; no dual write | Outbox table and routing |
+
+**Common mistakes:** dual writes; raw table changes as the public contract; a connector down longer than binlog retention; `errors.tolerance=all` without a DLQ or alerts (silent loss); expecting a DLQ on source connectors; not monitoring connector and task status.
+
+## 8. Check your understanding
+
+1. Why can't "insert into MySQL, then publish to Kafka" be made reliable in application code alone?
+2. Does the outbox pattern give exactly-once delivery? Explain.
+3. A sink connector stops every few hours on bad records. What are the options?
+4. Why is CDC on raw tables risky as a public contract?
+
+Answers are at the end of this note.
+
+## 9. Revision
+
+**Remember**
+- **Connectors instead of glue code.**
+- **CDC reads the database's log**: committed changes, in order, including deletes.
+- **Outbox + CDC avoids dual writes**, but delivery is **eventual and at-least-once**.
+- **Publish intentional events (outbox), not raw tables.**
+- **Sink DLQ yes, source DLQ no**; monitor connector tasks.
+
+**Explain in 15 seconds:** "Kafka Connect moves data in and out of Kafka with connectors; CDC with Debezium streams committed changes from the binlog, and with an outbox table it removes dual writes, at least once."
+
+**Explain in 60 seconds:**
+> "For integrations I use Kafka Connect rather than custom producers and consumers. For databases I prefer log-based CDC: Debezium snapshots, then reads MySQL's binlog, so every committed insert, update and delete arrives in order without polling. To publish domain events without dual writes, the service writes an outbox row in the same transaction as its data, and CDC publishes it. That makes publication reliable but eventual, and CDC is at-least-once, so after a crash some events can repeat and consumers must be idempotent. Sink connectors can dead-letter bad records; source connectors can't."
 
 **Likely follow-up questions:**
-- **What is the dual-write problem?** Writing to the database and Kafka separately; a crash in between leaves them inconsistent.
-- **Why log-based CDC over polling?** It sees every committed change in order, including deletes, with low load.
-- **Why an outbox instead of CDC on business tables?** Clean, versioned events instead of exposing internal tables.
-- **What happens when a sink connector meets a bad record?** By default the task stops; with error tolerance it skips and can dead-letter it.
-- **What if the CDC connector is down for days?** If the binlog it needs has been purged, it must take a new snapshot.
+- **Why log-based CDC over polling?** It sees every committed change in order, including deletes, with little load on the database.
+- **What if the CDC connector is down for days?** If the binlog position it needs has been purged, it must take a new snapshot.
+- **Outbox with CDC or with a polling relay?** CDC gives lower latency and no polling load; a relay is simpler to run but adds load and delay. Both are at-least-once.
 
-**Architect angle:** "I use Connect and CDC to keep integrations declarative and consistent, and I make the outbox the standard way to publish domain events from a database-backed service."
+**Architect's takeaway:** make the outbox the standard way to publish domain events from a database-backed service, and never assume it means exactly-once.
 
-## 11. Industry check
+**Next topic:** [Security: TLS, SASL and ACLs](16-security-tls-sasl-acls.md) (2.2.16)
+
+## 10. Verification and sources
 
 > [!NOTE]
-> Checked 2026-10-21 by web search (Debezium documentation, connector vendor docs, Kafka Connect error-handling articles). Re-verify when you revisit the note.
+> Checked 2026-10-21 by web search. Re-verify when you revisit this note.
 
-- **Confirmed:** by default a Connect task stops on an error such as a converter mismatch; `errors.tolerance=all` skips bad records in converters and SMTs; sink connectors can use `errors.deadletterqueue.topic.name` with optional context headers; Kafka Connect has no DLQ for source connectors. The Debezium MySQL connector performs an initial consistent snapshot (because MySQL purges binlogs) and then reads the binlog from that position; `snapshot.mode` defaults to `initial`; Debezium supports routing events from a transactional outbox table.
-- **To verify:** Connect worker modes and REST configuration for your version; the Debezium outbox event router's settings; current property names such as `topic.prefix`.
-- **Decision rule:** Connect for integrations, log-based CDC for databases, outbox for domain events, DLQs and task monitoring always.
+- **Confirmed:** by default a Connect task stops on errors such as converter mismatches; `errors.tolerance=all` skips bad records in converters and transforms; sink connectors can use `errors.deadletterqueue.topic.name` with optional context headers; Connect has no DLQ for source connectors. The Debezium MySQL connector takes an initial consistent snapshot and then reads the binlog from that position (`snapshot.mode` defaults to `initial`); Debezium supports routing events from an outbox table. Debezium's default guarantee is at-least-once: after failures or restarts the same change can be delivered more than once (Debezium blog and connector documentation).
+- **Assumptions and illustrations:** the ShopFlow story; configuration (not run).
+- **To verify:** the outbox event router's settings; Connect worker modes and REST configuration; current Debezium property names; whether your Debezium connector and version support KIP-618 exactly-once delivery.
+- **Also confirmed:** Kafka Connect supports exactly-once delivery for source connectors from Kafka 3.3 (KIP-618), writing records and source offsets in one Kafka transaction (KIP-618; Debezium blog, "Towards exactly-once delivery").
+- **Decision rule:** Connect for integrations, log-based CDC for databases, outbox for domain events, idempotent consumers and monitored tasks always.
 
-## 12. Going further
+**Sources:** Debezium documentation (MySQL connector, outbox); Apache Kafka documentation (Kafka Connect); microservices.io, "Transactional outbox".
 
-- Debezium documentation: MySQL connector, outbox event router
-- Apache Kafka documentation: Kafka Connect
-- Chris Richardson, "Transactional outbox" pattern (microservices.io)
+## Answers
 
-**Next:** [Security: TLS, SASL and ACLs](16-security-tls-sasl-acls.md) (2.2.16).
+1. The two writes go to different systems with no shared transaction; a crash between them leaves one done and the other not, and retrying can duplicate. Only moving the event into the same database transaction (outbox) removes the gap.
+2. No. It guarantees the event is eventually published if the order was committed, but CDC (or a relay) can re-send after a crash, so delivery is at-least-once; consumers deduplicate.
+3. Fix the data or converter; or set `errors.tolerance=all` with a DLQ topic, context headers and alerts, so bad records are parked and investigated instead of stopping the task.
+4. Every internal schema change (rename, split a table) becomes a breaking change for consumers; an outbox lets you publish stable, intentional events.
 
-Back to [the Kafka overview](01-kafka-overview.md) · [Messaging overview](../01-messaging-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).
+Back to [the Kafka overview](01-kafka-overview.md) · [Index](../../README.md) · [Roadmap](../../roadmap.md).
