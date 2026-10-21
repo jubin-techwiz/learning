@@ -17,8 +17,7 @@ These are the intermediate operations you will write most often. **Version note*
 |---|---|
 | Baseline | **Java 8**: `filter`, `map`, `flatMap`, `sorted`, `distinct`, `limit`, `skip`, `Predicate.and`/`negate`, `Comparator.comparing`/`thenComparing`/`reversed` |
 | Newer features | **Java 16**: `mapMulti` (described, not used); the examples use records and `Stream.toList()` (Java 16) and `List.of` (Java 9) |
-| Examples need | **Java 16 or later** |
-| Hands-on tested with | OpenJDK 21.0.8 (Temurin) |
+| Hands-on baseline | **Java 21**, tested with OpenJDK 21.0.8 (Temurin) |
 
 Every example is a complete program; run it, compare with the **Expected output**, then try the experiment. How to run them on your Mac is in [the Java overview](../01-java-overview.md), section 5.
 
@@ -83,7 +82,7 @@ flowchart LR
 **Concept.** `filter` takes a predicate and keeps the elements for which it returns `true`. Several `filter` calls in a row act like "and". Named predicates (`Predicate<Order>`) can be combined with `and`, `or` and `negate`, so business rules read like sentences and can be reused.
 
 ```java
-// File: FilterDemo.java (runnable, Java 16)
+// File: FilterDemo.java (runnable, Java 21)
 import java.util.List;
 import java.util.function.Predicate;
 
@@ -151,7 +150,7 @@ paid.negate():        [o-1002, o-1004]
 **Concept.** `map` applies a function to every element and passes on the result, one result per element. The element type can change, here from `Order` to an `OrderSummary` record shaped for the API, so internal fields such as `lines` don't leak to callers.
 
 ```java
-// File: MapDemo.java (runnable, Java 16)
+// File: MapDemo.java (runnable, Java 21)
 import java.util.List;
 
 public class MapDemo {
@@ -207,7 +206,7 @@ o-1005 | cy | EUR 120.00
 **Concept.** When each element contains a collection, `map` gives you a stream of collections. `flatMap` takes a function that returns a *stream* for each element, and joins all those streams into one. Use it to go from orders to all their lines.
 
 ```java
-// File: FlatMapDemo.java (runnable, Java 16)
+// File: FlatMapDemo.java (runnable, Java 21)
 import java.util.List;
 
 public class FlatMapDemo {
@@ -282,7 +281,7 @@ If the function returns `null` instead of a stream, `flatMap` treats it as an em
 **Concept.** `sorted()` uses natural order (for example alphabetical strings); `sorted(comparator)` uses your rule. Build comparators from keys: `Comparator.comparing(...)` for objects such as `String`, `comparingLong(...)` for `long` values, `thenComparing(...)` for a tie-breaker, and `reversed()` for the opposite order. For ordered streams the sort is **stable**: elements that compare equal keep their original order.
 
 ```java
-// File: SortedDemo.java (runnable, Java 16)
+// File: SortedDemo.java (runnable, Java 21)
 import java.util.Comparator;
 import java.util.List;
 
@@ -352,7 +351,7 @@ customers, natural:   [ana, ben, cy]
 **Concept.** `limit(n)` keeps the first `n` elements; `skip(n)` drops the first `n`. Together they make a page: page `p` of size `s` is `skip((p - 1) * s).limit(s)`. Both count in encounter order, so they must come **after** `sorted` when you want "the top N" or a page of sorted results.
 
 ```java
-// File: LimitSkipDemo.java (runnable, Java 16)
+// File: LimitSkipDemo.java (runnable, Java 21)
 import java.util.Comparator;
 import java.util.List;
 
@@ -420,7 +419,7 @@ limit then sorted (wrong top 2): [o-1001, o-1002]
 **Concept.** The endpoint from section 3 is one pipeline: a business rule (`filter`), a predictable order (`sorted` with a tie-breaker), a window (`skip`/`limit`) and the response shape (`map`). The order of the steps is part of the logic.
 
 ```java
-// File: OrderHistoryPage.java (runnable, Java 16)
+// File: OrderHistoryPage.java (runnable, Java 21)
 import java.util.Comparator;
 import java.util.List;
 
@@ -505,7 +504,7 @@ Page 3 is empty: after skipping four orders there is nothing left, which is the 
 - **Why?** `==` compares object identity, not characters. A value built at run time (from a request, a database or a concatenation) is a different `String` object from the literal in your data, even when the text is the same.
 
 ```java
-// File: FilterStringMistake.java (runnable, Java 16)
+// File: FilterStringMistake.java (runnable, Java 21)
 import java.util.List;
 
 public class FilterStringMistake {
@@ -563,7 +562,7 @@ with equals: [o-1001, o-1003]
 - **Why?** `reversed()` returns the reverse of the comparator it is called on; called at the end of a chain, it reverses every key, including the customer.
 
 ```java
-// File: ReversedChainMistake.java (runnable, Java 16)
+// File: ReversedChainMistake.java (runnable, Java 21)
 import java.util.Comparator;
 import java.util.List;
 
@@ -703,7 +702,7 @@ Answers are at the end of this note.
 **Exercise solutions** (run on OpenJDK 21.0.8; your version may differ in style but should print the same):
 
 ```java
-// File: ProductNames.java (runnable, Java 16)
+// File: ProductNames.java (runnable, Java 21)
 import java.util.List;
 
 public class ProductNames {
@@ -743,7 +742,7 @@ products in paid orders: [HOODIE, MUG, SOCKS, TEE]
 ```
 
 ```java
-// File: MugUnits.java (runnable, Java 16)
+// File: MugUnits.java (runnable, Java 21)
 import java.util.List;
 
 public class MugUnits {
@@ -784,7 +783,7 @@ mugs in orders that are not cancelled: 5
 o-1001 (2) and o-1004 (3) count; o-1002's two mugs don't, because it is cancelled.
 
 ```java
-// File: CustomerPageTwo.java (runnable, Java 16)
+// File: CustomerPageTwo.java (runnable, Java 21)
 import java.util.Comparator;
 import java.util.List;
 
@@ -826,7 +825,7 @@ page 2 by customer, then id: [o-1002, o-1004]
 Sorted by customer, then id: o-1001, o-1003 (ana), o-1002 (ben), o-1004, o-1005 (cy). Page 2 skips the first two.
 
 ```java
-// File: TopLines.java (runnable, Java 16)
+// File: TopLines.java (runnable, Java 21)
 import java.util.Comparator;
 import java.util.List;
 

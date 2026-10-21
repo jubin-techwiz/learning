@@ -55,7 +55,7 @@ Only the Streams series is written so far; the rest are listed as plain text and
 
 The Java notes are hands-on: every important concept comes with a complete program you can run, its exact output, and a change to try. This section is the one place that explains how to run them.
 
-**1. Check the Java version.** The examples need Java 16 or later and are tested with Java 21 (an LTS release); each lesson's version note says which feature arrived in which Java version. On this Mac, Java is managed with SDKMAN, and Temurin 21 is installed:
+**1. Check the Java version.** The examples use Java 21 (an LTS release); each lesson's version note says which feature arrived in which Java version. On this Mac, Java is managed with SDKMAN, and Temurin 21 is installed:
 
 ```bash
 sdk current java          # shows the active version, for example 21.0.8-tem
@@ -108,7 +108,7 @@ The full sample data with lines is listed at the start of [13.2.3](02-streams/03
 
 ## 6. Architectural decisions
 
-- **Which Java version?** Each lesson has a short version note: the *baseline* (the version the core idea comes from, for example Java 8 for streams), the *newer features* and the version that *introduced* each, what the examples *need*, and the JDK they were *tested with* (Java 21.0.8). The idea and the API can come from different versions, which matters when a production service still runs Java 8, 11 or 17.
+- **Which Java version?** Each lesson has a short version note: the *baseline* (the version the core idea comes from, for example Java 8 for streams), the *newer features* and the version that *introduced* each, and the *hands-on baseline* the examples run on (Java 21, tested with 21.0.8). The idea and the API can come from different versions, which matters when a production service still runs Java 8, 11 or 17.
 - **Language feature or library?** Prefer the standard library feature when it states the intent more clearly than a loop, and keep the loop when it doesn't.
 
 ## 7. Notes in this area, in learning order

@@ -19,8 +19,7 @@ Read this first. It is the map of the Streams series: what a stream is, why it e
 |---|---|
 | Baseline | **Java 8**: the Stream API (`java.util.stream`), lambda expressions, method references and `Optional` |
 | Newer features covered | **Java 9**: `takeWhile`, `dropWhile`, `Stream.ofNullable`, `iterate` with a condition. **Java 10**: `Collectors.toUnmodifiableList()`. **Java 16**: `Stream.toList()`, `mapMulti`. **Java 24**: Stream Gatherers (13.2.10, planned) |
-| Examples need | **Java 16 or later**: they use records (a Java 16 language feature) and `Stream.toList()`; the example checker compiles each one at the Java 16 level |
-| Hands-on tested with | OpenJDK 21.0.8 (Temurin) |
+| Hands-on baseline | **Java 21**, tested with OpenJDK 21.0.8 (Temurin). The examples also use records, a Java 16 language feature |
 | On Java 8 to 15 | Replace each record with a small final class, `toList()` with `collect(Collectors.toList())` (no mutability guarantee) or, from Java 10, `collect(Collectors.toUnmodifiableList())`, and `List.of(...)` (Java 9) with `Arrays.asList(...)`, which returns a fixed-size list |
 
 ## 1. What it is and why it matters
@@ -67,7 +66,7 @@ Read this first. It is the map of the Streams series: what a stream is, why it e
 The program below answers the request twice, once with a loop and once with a stream, using the shared ShopFlow sample orders (described in [the Java overview](../01-java-overview.md), section 5).
 
 ```java
-// File: PaidTotal.java (runnable, Java 16)
+// File: PaidTotal.java (runnable, Java 21)
 import java.util.List;
 
 public class PaidTotal {
