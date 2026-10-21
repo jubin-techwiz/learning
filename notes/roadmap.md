@@ -31,15 +31,17 @@ You can have several areas open at once. When you switch, the area you leave is 
 |---|---|---|---|---|
 | 1 Resilience | Done | 1.1 to 1.10 | none | All ten notes follow the current note format (migrated and reviewed 2026-10-21). Revise from the cheat sheet. Hands-on demo only if you ask |
 | 2 Messaging, Kafka | Done | 2.1, 2.2.1 to 2.2.18 (Kafka series complete) | Next in this area: RabbitMQ series (2.3) | Resumed on 2026-10-21 after the resilience notes were finished. Kafka error handling and the idempotent producer (2.2.8, 2.2.9) have their resilience prerequisites in place |
+| 13 Java, Streams | Learning | 13.1, 13.2.1, 13.2.2 | 13.2.3 Transforming and filtering | Added on 2026-10-21 at your request. Numbered 13 so existing note paths don't change; the order of learning is set by "Do next", not by the number |
 
 ## Do next
 
 | # | Topic | Step | Why now |
 |---|---|---|---|
-| 1 | RabbitMQ series | 2.3.1 to 2.3.14 | The queue family, to compare with Kafka |
-| 2 | Choosing a messaging system | 2.4 | Completes the messaging area with a decision guide |
-| 3 | Design patterns | 3.x | Next track in your order |
-| 4 | Microservices | 4.x | Builds on resilience, messaging and design patterns |
+| 1 | Java Stream API series | 13.2.3 onward | You chose it next (2026-10-21); started with the pipeline and laziness |
+| 2 | RabbitMQ series | 2.3.1 to 2.3.14 | The queue family, to compare with Kafka |
+| 3 | Choosing a messaging system | 2.4 | Completes the messaging area with a decision guide |
+| 4 | Design patterns | 3.x | Next track in your order |
+| 5 | Microservices | 4.x | Builds on resilience, messaging and design patterns |
 
 ## Tracks
 
@@ -245,5 +247,29 @@ Why: much of the architect role is communication and judgement, not code.
 | 12.4 | Managing technical debt | Both | Planned |
 | 12.5 | Presenting trade-offs to non-technical people | Architect | Planned |
 | 12.6 | System design interview practice | Both | Planned |
+
+### 13. Java language and platform
+Why: every ShopFlow service is written in Java, and architecture decisions about readability, parallelism and performance depend on what the language and the JVM really guarantee. This track was added after the original twelve, so it is numbered 13 to keep existing paths stable.
+
+| Step | Topic | Role | Status |
+|---|---|---|---|
+| 13.1 | [Java language and platform: the big picture](13-java/01-java-overview.md) | Both | Done |
+
+**Series 13.2, Java Stream API (fundamentals to advanced).** Written as a series: `13-java/02-streams/`.
+
+| Step | Topic | Level | Role | Status |
+|---|---|---|---|---|
+| 13.2.1 | [Java Stream API: the big picture](13-java/02-streams/01-streams-overview.md) | Fundamentals | Both | Done |
+| 13.2.2 | [The pipeline: source, operations and laziness](13-java/02-streams/02-pipeline-laziness.md) | Fundamentals | Engineer | Done |
+| 13.2.3 | Transforming and filtering: `map`, `filter`, `flatMap`, `sorted`, `limit` | Fundamentals | Engineer | Planned |
+| 13.2.4 | Terminal operations and `Optional` | Fundamentals | Engineer | Planned |
+| 13.2.5 | Collectors: `groupingBy`, `toMap`, `partitioningBy`, `teeing` | Intermediate | Engineer | Planned |
+| 13.2.6 | Primitive streams and boxing | Intermediate | Engineer | Planned |
+| 13.2.7 | Lambdas in pipelines: statelessness, side effects, exceptions | Intermediate | Both | Planned |
+| 13.2.8 | Parallel streams: when they help and when they hurt | Advanced | Architect | Planned |
+| 13.2.9 | Streams versus loops in production code | Advanced | Both | Planned |
+| 13.2.10 | Custom stages: Stream Gatherers | Advanced | Both | Planned |
+
+Other Java topics (records and pattern matching, concurrency and virtual threads, memory and the JVM) are proposals, to be listed when they start.
 
 Back to [the index](README.md).

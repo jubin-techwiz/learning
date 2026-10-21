@@ -62,6 +62,18 @@ Kafka series complete. Start with the overview (queues versus logs, and the four
 
 **Kafka series complete (2.2.1 to 2.2.18).** Planned in this area: a RabbitMQ series (2.3.x) and a comparison note, "choosing a messaging system" (2.4).
 
+### 13 · Java
+
+Added on request. The Streams series has started; the other Java topics are planned.
+
+| Step | Note | Status |
+|---|---|---|
+| 13.1 | [Java language and platform: the big picture](13-java/01-java-overview.md) | Done |
+| 13.2.1 | [Java Stream API: the big picture](13-java/02-streams/01-streams-overview.md) (series index) | Done |
+| 13.2.2 | [The pipeline: source, operations and laziness](13-java/02-streams/02-pipeline-laziness.md) | Done |
+
+**Planned in this series:** 13.2.3 to 13.2.10 (transforming and filtering, terminal operations, collectors, primitive streams, lambdas in pipelines, parallel streams, streams versus loops, Stream Gatherers). The full list is in the [roadmap](roadmap.md).
+
 ### Coming next
 
 Design patterns (track 3) and microservices (4), followed by architecture foundations (5), data, APIs, security, cloud, observability, delivery and architect skills. The full list, with levels, is in the [roadmap](roadmap.md).
