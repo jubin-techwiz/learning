@@ -82,14 +82,14 @@ flowchart LR
 2. **Classify:** permanent errors (validation, deserialization) skip retries; transient ones are retried.
 3. **Blocking retries:** a few attempts in place with backoff; the partition's later events wait, and order is kept.
 4. **Non-blocking retries (optional):** the event is published to a retry topic with a "not before" time; later events in the main topic continue.
-5. **Dead-letter:** after the last attempt, the event is published to the DLT with headers (original topic, partition, offset, exception), and its offset is committed so the partition moves on. By default Spring writes to the **same partition number** in the DLT, so create the DLT with at least as many partitions as the original topic, and set its name explicitly: the default suffix changed between Spring Kafka versions.
+5. **Dead-letter:** after the last attempt, the event is published to the DLT with headers (original topic, partition, offset, exception), and its offset is committed so the partition moves on. By default Spring writes to the **same partition number** in the DLT, so create the DLT with at least as many partitions as the original topic, and set its name explicitly: the documented default suffix differs between Spring Kafka versions (`.DLT` in the 3.1 and 3.2 reference, `-dlt` in 3.3 and 4.0).
 6. **Operate the DLT:** alert, fix, replay.
 
 **A DLT entry is not a success.** Dead-lettering commits the offset so the partition can move on, but the business operation for that event did **not** happen (no stock reserved, no email sent). Later events for the same key are processed meanwhile, and a replay arrives after them, so order for that key is no longer guaranteed. If a later event depends on the parked one, handle that case (version numbers, parking the key's later events too) or accept the gap.
 
 **Deserialization errors** happen before your code runs. Spring's `ErrorHandlingDeserializer` delivers the failure to the error handler, where it is treated as fatal (no retries) and can be dead-lettered.
 
-**If you configure nothing:** Spring's `DefaultErrorHandler` tries a failing record 10 times with no delay, then only logs it and moves on. There is no back-off and no DLT, so the event is effectively dropped. Always configure the error handler.
+**If you configure nothing** (as documented for Spring Kafka 3.1, 3.2, 3.3 and 4.0; older versions were not checked): `DefaultErrorHandler` uses `FixedBackOff(0L, 9)`, meaning the first delivery plus 9 immediate retries, 10 attempts in all with no delay. After that the default recoverer only logs the record at `ERROR` level and the container moves on (the record is skipped). There is no back-off and no DLT, so the event is not processed and not parked anywhere. Some exceptions are treated as fatal and go to the recoverer on the first failure, without retries: `DeserializationException`, `MessageConversionException`, `ConversionException`, `MethodArgumentResolutionException`, `NoSuchMethodException` and `ClassCastException`. Always configure the error handler for business topics.
 
 **Who guarantees what**
 
@@ -101,7 +101,7 @@ flowchart LR
 | External systems | Whatever failed: their availability decides whether an error is transient |
 
 > [!NOTE]
-> Untested sketch to show the shape. Defaults (back-off, DLT naming) vary by Spring Kafka version; set them explicitly.
+> Untested sketch to show the shape. Set the back-off and the DLT name explicitly: the documented defaults for the DLT name differ by Spring Kafka version.
 
 ```java
 @Bean
@@ -180,7 +180,7 @@ Answers are at the end of this note.
 **Likely follow-up questions:**
 - **Blocking versus non-blocking retries?** Blocking keeps order but holds the partition; retry topics keep it flowing but can reorder.
 - **How do you handle deserialization errors?** Wrap the deserializer (`ErrorHandlingDeserializer`) so the bad record reaches the error handler and can be dead-lettered.
-- **What does Spring do if you configure nothing?** Ten immediate attempts, then it logs the record and moves on, without a DLT.
+- **What does Spring do if you configure nothing?** In the Spring Kafka versions whose reference I checked (3.1 to 4.0): ten immediate attempts, then it logs the record at `ERROR` and moves on, without a DLT. Don't rely on that default; configure the handler.
 
 **Architect's takeaway:** define the error policy per topic: which errors are transient, whether order matters, the retry schedule, and who owns the DLT and its replay.
 
@@ -193,9 +193,9 @@ Answers are at the end of this note.
 
 - **Confirmed:** Spring Kafka offers non-blocking retries with `@RetryableTopic` (since 2.7; on class-level listeners since 3.2); they are not supported with batch listeners or container transactions; blocking and non-blocking retries can be combined (since 2.8.4); a retry-topic consumer pauses the partition until a record's delay is due. `ErrorHandlingDeserializer` lets deserialization failures reach the error handler, and `DeserializationException` is treated as fatal. If a schema registry is unreachable, every record can fail deserialization: an outage, not poison (Spring for Apache Kafka reference; Conduktor).
 - **Assumptions and illustrations:** the ShopFlow stories; code (not run).
-- **Also confirmed:** without configuration, `DefaultErrorHandler` uses `FixedBackOff(0, 9)` (10 attempts, no delay) and then logs the record (Spring for Apache Kafka reference, handling exceptions).
-- **Also confirmed:** `DeadLetterPublishingRecoverer`'s default destination is the original topic plus a suffix (`.DLT` in older releases, `-dlt` in Spring Kafka 4.x) and the same partition, so the DLT needs at least as many partitions (Spring Kafka API documentation).
-- **To verify:** the exact release in which the default suffix changed.
+- **Confirmed against the Spring for Apache Kafka reference, "Handling Exceptions" (checked 2026-10-21 on the 3.1, 3.2, 3.3 and 4.0.7 pages):** the default `DefaultErrorHandler` configuration is `FixedBackOff(0L, 9)`; "after ten failures, the failed record is logged (at the `ERROR` level)"; the default recoverer logs the record; the fatal exceptions listed above skip retries (3.3 and 4.0.7 pages). The 3.1, 3.2, 3.3 and 4.0.7 pages describe these defaults identically.
+- **Confirmed (same sources):** `DeadLetterPublishingRecoverer` sends to `<originalTopic>.DLT` in the 3.1 and 3.2 pages and to `<originalTopic>-dlt` in the 3.3 and 4.0.7 pages (and the `DeadLetterPublishingRecoverer` API page), in both cases to the same partition, so the DLT needs at least as many partitions.
+- **To verify:** the defaults for versions older than 3.1 (the 3.0 and 2.9 reference URLs could not be fetched), and the exact patch release in which the suffix changed.
 - **Decision rule:** classify errors; brief blocking retries; retry topics only where order doesn't matter; immediate DLT for permanent errors; pause on dependency outages; an owned DLT with replay.
 
 **Sources:** Spring for Apache Kafka reference (error handling, non-blocking retries); *Enterprise Integration Patterns* ("Dead Letter Channel"); Conduktor, "Dead Letter Topics: Handling Poison Pills".

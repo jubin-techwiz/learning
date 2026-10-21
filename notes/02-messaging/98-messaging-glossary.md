@@ -33,7 +33,7 @@ The canonical definitions for the messaging area. Notes may shorten these but ne
 | **Effectively once** | Messages may arrive more than once, but their effect happens once | What most business systems actually need | At-least-once delivery + idempotent consumer | Exactly-once |
 | **Idempotent consumer** | Handles the same message twice without a second effect on the state it controls | Makes at-least-once safe for that state; external systems need their own idempotency | Processed-events table with a unique key | Deduplication, idempotency key |
 | **Poison message** | A message that will always fail processing | Can block a partition or queue | Malformed product code | Dead-letter topic |
-| **Dead-letter topic (DLT) / queue (DLQ)** | Where messages that can't be processed are parked with error details | Keeps the main flow moving; needs an owner | `order-events.DLT` (name depends on configuration) | Retry topic, replay |
+| **Dead-letter topic (DLT) / queue (DLQ)** | Where messages that can't be processed are parked with error details | Keeps the main flow moving; needs an owner | `order-events.DLT` or `order-events-dlt` (the default suffix depends on the Spring Kafka version; set it explicitly) | Retry topic, replay |
 | **Backpressure** | A "slow down" signal from a busy receiver to the sender | Prevents unbounded queues and overload | Kafka consumers pull only what they can process | Load shedding |
 | **Event replay** | Reading old messages again on purpose | Recovers from bugs and builds new read models | Resetting a group's offsets | Retention |
 | **Eventual consistency** | All parts agree after a short delay, not instantly | Messaging trades instant answers for independence | Stock updated a moment after the order | Strong consistency |

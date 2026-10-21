@@ -10,12 +10,14 @@ KENMORA_WEB=<path to kenmora>/web ./tools/check-notes.sh           # plus Kenmor
 | Script | Checks | Needs |
 |---|---|---|
 | `check-links.py` | Every relative link resolves; notes link only inside `notes/` | Python 3 |
-| `check-structure.py` | Code fences closed and tagged; no lab paths or commands in notes; front matter complete (title, tags list, category matching the area folder, valid level and `updated` date); a Prerequisites line and a Next topic line that links to a note; the "Step N" label matches the file path; required sections, numbered without gaps, ending with Answers; references to existing notes are links; every note is linked from `notes/README.md` and `notes/roadmap.md` | Python 3 |
+| `check-structure.py` | Code fences closed and tagged; no lab paths or commands in notes; front matter complete (title, tags list, category matching the area folder, valid level and `updated` date); a Prerequisites line that links to a note (or says "none") and a Next topic line that links to a different note (or says the topic is planned or the series is complete); the "Step N" label matches the file path; required sections, numbered without gaps, ending with Answers; references to existing notes are links; every note is linked from `notes/README.md` and `notes/roadmap.md` | Python 3 |
 | `render-check.ts` | Every note renders in Kenmora's own pipeline without warnings | Kenmora's `web` folder with `node_modules` (`npx vite-node`) |
 | `mermaid-check.mjs` | Every Mermaid diagram parses with Kenmora's Mermaid version | Kenmora's `web` folder with `node_modules` |
 | `check-notes.sh` | Runs all of the above; exits non-zero if any fails | As above |
 
 Notes still in the earlier format (with an "Industry check" heading) are listed as "old format" by the structure check instead of failing.
+
+**Known limits:** link checking verifies that the target file exists, not that a `#heading` anchor exists; links inside code blocks and inline code are ignored; the structure check does not judge whether the right note is named as a prerequisite or as next, only that the line is present and points somewhere valid.
 
 **What they do not do:** they check structure, metadata and links only. A passing run says nothing about whether the technical content is accurate or whether a note teaches well; that needs review against official documentation and a reader.
 

@@ -101,7 +101,7 @@ sequenceDiagram
 |---|---|
 | Kafka broker | Storing committed offsets durably per group and partition |
 | Consumer client | Committing when told to (auto or manual); `commitSync` blocks and retries until success, an unrecoverable error or its timeout (`default.api.timeout.ms`); `commitAsync` doesn't retry |
-| Spring Kafka | Committing on the chosen ack mode; it disables the client's auto-commit by default and defaults to `BATCH` |
+| Spring Kafka | Committing on the chosen ack mode; it sets the client's `enable.auto.commit` to `false` unless you set it explicitly, and defaults to `BATCH` (since 2.3; checked on the 3.3 reference) |
 | Application | Committing only after work is done; making processing idempotent |
 | External systems | Email or HTTP providers: their own guarantees; they don't join your transaction |
 
@@ -222,7 +222,8 @@ Answers are at the end of this note.
 
 - **Confirmed:** `enable.auto.commit` defaults to `true` and `auto.commit.interval.ms` to 5 s in the Java client; with auto-commit, records are considered consumed once returned by `poll()`, so failures after polling but before processing completes can lose them (Kafka `KafkaConsumer` Javadoc); the committed offset should be the next message to consume; committed offsets are stored in `__consumer_offsets`; `commitSync` blocks until success, an unrecoverable error or the API timeout, and `commitAsync` doesn't retry. Spring Kafka sets the client's `enable.auto.commit` to false by default (since 2.3) and its default ack mode is `BATCH` (Spring Kafka container properties reference).
 - **Assumptions and illustrations:** the ShopFlow stories; the code and commands (not run).
-- **Also confirmed:** Spring Kafka ack modes: `RECORD` commits after each record; `BATCH` (default) after all records from one poll; `TIME` and `COUNT` after a time or number of records; `MANUAL` queues acknowledgements and commits once the poll's records are processed; `MANUAL_IMMEDIATE` commits at once when acknowledged on the consumer thread. An `Acknowledgment` listener parameter needs a manual ack mode; with a custom container factory, set it on the factory (Spring Kafka `AckMode` Javadoc and reference). `offsets.retention.minutes` defaults to 10080 (7 days) since Kafka 2.0 (KIP-186).
+- **Also confirmed (Spring Kafka 3.3 reference, "Message Listener Containers", checked 2026-10-21):** since 2.3 the framework sets `enable.auto.commit` to false unless it is set explicitly in the consumer factory or the container's consumer property overrides, so setting it to true yourself brings client auto-commit back; the default ack mode is `BATCH`; `RECORD` commits when the listener returns for a record, `BATCH` when all records from the poll are processed, `MANUAL` applies the `BATCH` semantics after you call `acknowledge()`, `MANUAL_IMMEDIATE` commits at once on `acknowledge()`.
+- **Also confirmed (earlier check):** Spring Kafka ack modes: `RECORD` commits after each record; `BATCH` (default) after all records from one poll; `TIME` and `COUNT` after a time or number of records; `MANUAL` queues acknowledgements and commits once the poll's records are processed; `MANUAL_IMMEDIATE` commits at once when acknowledged on the consumer thread. An `Acknowledgment` listener parameter needs a manual ack mode; with a custom container factory, set it on the factory (Spring Kafka `AckMode` Javadoc and reference). `offsets.retention.minutes` defaults to 10080 (7 days) since Kafka 2.0 (KIP-186).
 - **To verify:** your Spring Boot version's handling of `spring.kafka.listener.ack-mode` with custom container factories.
 - **Decision rule:** commit after processing; idempotent consumers; explicit choices for external side effects.
 

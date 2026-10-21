@@ -66,4 +66,6 @@ Folder and file numbers form the step number, so alphabetical order is learning 
 
 ## Version control
 
-This folder is a git repository. Its `origin` remote is the private GitHub repository `jubin-techwiz/learning`, reached through the `github.com-work` SSH alias (the machine has two GitHub accounts, so use that alias, not plain `github.com`). Work happens on `main`; commit and push only when you decide to (an assistant should not commit or push unless asked).
+This folder is a git repository. Its `origin` remote is the GitHub repository `jubin-techwiz/learning`, reached through the `github.com-work` SSH alias (the machine has two GitHub accounts, so use that alias, not plain `github.com`). Work happens on `main`; commit and push only when you decide to (an assistant should not commit or push unless asked).
+
+**Visibility.** When last checked (2026-10-21, with `gh repo view jubin-techwiz/learning --json visibility`) the repository was **public**, so everything pushed to it, including these notes, is readable by anyone. Visibility is a GitHub setting owned by the repository owner and this README does not change it; re-check it before assuming otherwise, and keep secrets and private material out of the repository either way.

@@ -10,8 +10,9 @@ For every note in notes/:
     (notes that are only planned may stay plain text);
   - front matter has title, a non-empty tags list, a category matching the area folder,
     a valid level and a valid `updated` date;
-  - topic notes have a Prerequisites line and a Next topic line, and the Next topic line
-    links to a note (or says the topic is planned / the series is complete);
+  - topic notes have a Prerequisites line that links to a note (or says "none") and a
+    Next topic line that links to a note other than itself (or says the topic is planned
+    or the series is complete). Link targets are verified by check-links.py;
   - the "Step N" label in the position line matches the file's path;
   - every note is linked from notes/README.md and notes/roadmap.md.
 
@@ -130,13 +131,21 @@ for f in sorted(glob.glob('notes/**/*.md', recursive=True)):
         report(f, 'the last section must be "Answers"')
 
     if step_of(f):                                     # topic notes and overviews, not glossary or cheat sheet
-        if not any(l.startswith('**Prerequisites:**') for l in lines):
+        link = re.compile(r'\]\(([^)\s]+\.md)(?:#[^)]*)?\)')
+        pre = [l for l in lines if l.startswith('**Prerequisites:**')]
+        if not pre:
             report(f, 'missing "**Prerequisites:**" line (write "none" if there are none)')
+        elif not link.search(pre[0]) and not re.search(r'\bnone\b', pre[0], re.I):
+            report(f, 'the Prerequisites line must link to a note or say "none"')
         nxt = [l for l in lines if l.startswith('**Next topic:**')]
         if not nxt:
             report(f, 'missing "**Next topic:**" line in the Revision section')
-        elif not re.search(r'\]\([^)]+\.md\)|planned|complete|completes', nxt[0], re.I):
-            report(f, 'the Next topic line must link to a note (or say it is planned or the series is complete)')
+        else:
+            targets = [os.path.normpath(os.path.join(os.path.dirname(f), t)) for t in link.findall(nxt[0])]
+            if targets and all(t == os.path.normpath(f) for t in targets):
+                report(f, 'the Next topic line links to the note itself')
+            elif not targets and not re.search(r'\bplanned\b|series is complete|completes? (the|this)', nxt[0], re.I):
+                report(f, 'the Next topic line must link to a note (or say it is planned or the series is complete)')
 
     for i, line in enumerate(lines, 1):
         if line.startswith(('**Messaging', '**Resilience', '**Prerequisites', '**Next topic', '#')):

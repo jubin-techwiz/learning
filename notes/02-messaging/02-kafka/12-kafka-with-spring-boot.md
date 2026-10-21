@@ -90,7 +90,7 @@ flowchart LR
 | Layer | Responsible for |
 |---|---|
 | Kafka broker and client | Storage, delivery, offsets |
-| Spring Kafka | Commit timing (it disables the client's auto-commit by default and uses `BATCH`), retries, DLT publishing, observation |
+| Spring Kafka | Commit timing (it sets the client's auto-commit to false unless you set it explicitly, and uses `BATCH`), retries, DLT publishing, observation |
 | Spring Boot | Wiring beans from properties |
 | Application | Idempotent listeners, handling send results, choosing ack mode and error policy |
 
@@ -129,7 +129,7 @@ void onOrder(OrderPlaced e) { email.sendConfirmation(e); }   // exceptions go to
 
 ### Default error handling surprises a team
 
-- **What happened?** A listener threw on a bad record. With no error handler configured, Spring tried it 10 times with no delay, logged it and moved on: the event was effectively dropped, with no DLT.
+- **What happened?** A listener threw on a bad record. With no error handler configured, Spring Kafka (3.1 to 4.0, as documented) tried it 10 times with no delay, logged it at `ERROR` and moved on: the event was skipped, with no DLT.
 - **Solutions:** configure the error handler explicitly (back-off, non-retryable exceptions, DLT).
 - **Trade-offs:** none worth avoiding.
 
@@ -167,7 +167,7 @@ Answers are at the end of this note.
 - **Properties in, beans out.**
 - **One shared `KafkaTemplate`**; always handle send results.
 - **The listener container = poll loop + commits + error handler.**
-- Spring Kafka **disables client auto-commit by default** and commits per ack mode (`BATCH` by default).
+- Spring Kafka **sets client auto-commit to false unless you set it explicitly** (since 2.3) and commits per ack mode (`BATCH` by default).
 - **Concurrency × instances ≤ partitions**; observation on; real brokers in tests.
 
 **Explain in 15 seconds:** "Spring Boot auto-configures Kafka from spring.kafka properties; I send with KafkaTemplate, receive with @KafkaListener, and set ack mode, error handling, tracing and tests as standard configuration."
@@ -191,7 +191,7 @@ Answers are at the end of this note.
 
 - **Confirmed:** Spring Boot configures Kafka through `spring.kafka.*`, auto-configures `KafkaTemplate`, creates `NewTopic` beans at startup (existing topics left alone), and supports other properties through `spring.kafka.properties`; `@EmbeddedKafka` comes from `spring-kafka-test` (Spring Boot reference). Spring Kafka sets the client's `enable.auto.commit` to false by default (since 2.3) and defaults to ack mode `BATCH`; observation is enabled with `observationEnabled` on the template and container properties, replacing the plain Micrometer timers, and is not supported for batch listeners (Spring for Apache Kafka reference). The Spring Boot reference listed 4.1.x as the latest stable line when checked.
 - **Assumptions and illustrations:** the ShopFlow story; configuration and code (not run).
-- **Also confirmed:** `DefaultErrorHandler` defaults to 10 attempts with no back-off, then logs the record (Spring for Apache Kafka reference).
+- **Also confirmed:** `DefaultErrorHandler` defaults to `FixedBackOff(0L, 9)` (10 attempts, no delay), then logs the record, in the Spring for Apache Kafka reference for 3.1, 3.2, 3.3 and 4.0.7 (details in [2.2.8](08-error-handling-retries-dlt.md)).
 - **To verify:** Spring Boot property names for enabling observation; Testcontainers service connections for Kafka.
 - **Decision rule:** a shared starter with safe defaults, record listeners unless throughput demands batches, observation on, real brokers in tests.
 

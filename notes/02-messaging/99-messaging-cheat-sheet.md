@@ -60,7 +60,7 @@ The line is blurring: RabbitMQ has streams, and Kafka's queue-style **share grou
 | [2.2.9](02-kafka/09-idempotent-producer-transactions.md) | Exactly-once | A bank transfer | Idempotent producer + transactions + `read_committed` + fencing; Kafka-to-Kafka only; rewind after abort |
 | [2.2.10](02-kafka/10-schemas-evolution.md) | Schemas | A standard plug socket | BACKWARD (default): upgrade consumers first; add optional fields with defaults; breaking change = new event type |
 | [2.2.11](02-kafka/11-ordering-partition-planning-hot-partitions.md) | Partition planning | Airport check-in desks | Partitions ≥ max(t/p, t/c), measured; a hot key stays hot whatever the count |
-| [2.2.12](02-kafka/12-kafka-with-spring-boot.md) | Spring Boot | Properties in, beans out | One shared `KafkaTemplate`; concurrency × instances ≤ partitions; client auto-commit off by default |
+| [2.2.12](02-kafka/12-kafka-with-spring-boot.md) | Spring Boot | Properties in, beans out | One shared `KafkaTemplate`; concurrency × instances ≤ partitions; Spring sets client auto-commit off unless you set it |
 | [2.2.13](02-kafka/13-retention-compaction-tiered-storage.md) | Storage | A paper archive | Retention for events, compaction for current state, tombstones delete keys; disk = volume × days × replication factor |
 | [2.2.14](02-kafka/14-kafka-streams-basics.md) | Kafka Streams | A live scoreboard | KStream = events, KTable = latest per key; state in RocksDB + changelog topics; joins need co-partitioning |
 | [2.2.15](02-kafka/15-kafka-connect-cdc.md) | Connect and CDC | Reading the till roll | Outbox + CDC avoids dual writes, but is eventual and at-least-once; sink DLQ yes, source DLQ no |
@@ -85,10 +85,10 @@ Client, broker and topic values were read from Apache Kafka 4.3.2 on 2026-10-21;
 | `isolation.level` | `read_uncommitted` | Set `read_committed` for transactional pipelines |
 | `offsets.retention.minutes` | 7 days | Committed offsets of an idle group expire |
 | `delivery.timeout.ms` / `transaction.timeout.ms` | 2 min / 1 min | Producer give-up time / open transaction limit |
-| `auto.commit.interval.ms` | 5 s | Client auto-commit; Spring Kafka turns auto-commit off |
+| `auto.commit.interval.ms` | 5 s | Client auto-commit; Spring Kafka turns it off unless you set it explicitly |
 | `delete.retention.ms` | 24 hours | How long tombstones stay in compacted topics |
 | Unclean leader election | Off | Turning it on trades data for availability |
-| Spring `DefaultErrorHandler` | 10 attempts, no delay, then log and skip | No DLT unless you configure one |
+| Spring `DefaultErrorHandler` | `FixedBackOff(0, 9)`: 10 attempts, no delay, then log at `ERROR` and skip (Spring Kafka 3.1 to 4.0 reference) | No DLT unless you configure one; the default DLT suffix is `.DLT` in 3.1 and 3.2, `-dlt` in 3.3 and 4.0 |
 | Authorisation with no matching ACL | Deny (except `super.users`) | Unless `allow.everyone.if.no.acl.found=true` |
 
 ## Interview corner
