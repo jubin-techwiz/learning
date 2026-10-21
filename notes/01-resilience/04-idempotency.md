@@ -41,7 +41,7 @@ updated: "2026-10-21"
 | **Deduplication** | Detecting and ignoring repeats | The mechanism behind idempotency | Unique constraint on the key | Idempotent consumer |
 | **Unknown outcome** | After a timeout, you can't tell if the operation happened | The case idempotency exists for | Charge request timed out | Timeout ([1.2](02-timeouts.md)) |
 | **Reconciliation** | Comparing your records with the other system's and fixing differences | How you resolve unknown outcomes | Look up the charge by reference | Durable operation record |
-| **At-least-once delivery** | A message is delivered until acknowledged, so it may arrive more than once | Why consumers must deduplicate | Redelivered `OrderPlaced` | At-most-once |
+| **At-least-once delivery** | The system keeps redelivering until the message is acknowledged, so duplicates are possible. Whether a message is actually delivered depends on retention, acknowledgement, retries and recovery policies | Why consumers must deduplicate; not a promise of no loss in every circumstance | Redelivered `OrderPlaced` | At-most-once |
 | **Transactional outbox / inbox** | Store an outgoing event (outbox) or a processed message ID (inbox) in the same **database** transaction as the state change | Reliable messaging around a database | `outbox` table | Dual write |
 
 ## 4. In a real system (ShopFlow)
@@ -82,9 +82,10 @@ sequenceDiagram
 **Why the obvious code is wrong.** This looks safe and isn't:
 
 > [!WARNING]
-> Defective example, shown so you can recognise it. Untested sketch.
+> **Deliberately defective example. Do not copy it.** It combines a database transaction with an external payment call and is shown only so you can recognise the flaw. Untested sketch.
 
 ```java
+// DEFECTIVE ON PURPOSE: the external charge is not atomic with this transaction's commit
 @Transactional
 public PaymentResult charge(String key, ChargeRequest request) {
     if (records.exists(key)) return records.result(key);
@@ -218,12 +219,12 @@ Answers are at the end of this note.
 **Explain in 15 seconds:** "Idempotent means repeating has the same effect as once; I send one key per operation on every retry, record the operation durably before calling the provider, and reconcile unknown outcomes."
 
 **Explain in 60 seconds:**
-> "Retries and at-least-once delivery mean the same request can arrive twice, and a timeout leaves the outcome unknown. Setting a value is naturally idempotent. For a payment, I create a durable operation record with a stable key and commit it first, then call the provider outside any database transaction, sending the same key on every attempt, and record the result. A timeout leaves the operation pending, never failed, and a reconciler settles it by retrying with the same key or looking it up. A database unique key only protects state in that database, and an outbox or inbox gives strong guarantees for database state, not for the external call. If the provider has no idempotency keys, I look the operation up before retrying, or hold it for reconciliation."
+> "Retries and at-least-once delivery mean the same request can arrive twice, and a timeout leaves the outcome unknown. Setting a value is naturally idempotent. For a payment, I create a durable operation record with a stable key and commit it first, then call the provider outside any database transaction, sending the same key on every attempt, and record the result. A timeout leaves the operation pending, never failed, and a reconciler settles it by retrying with the same key or looking it up. Idempotency prevents duplicate business effects only inside a boundary I can define: a database unique key protects state in that database, and an outbox or inbox gives strong guarantees for database state, but none of it automatically gives exactly-once effects across Kafka, my database and an external provider. For the provider, the guarantee is whatever its idempotency contract says. If it has no idempotency keys, I look the operation up before retrying, or hold it for reconciliation."
 
 **Likely follow-up questions:**
 - **Which HTTP methods are idempotent?** GET, PUT and DELETE by definition (and HEAD, OPTIONS); POST and PATCH are not by default.
 - **How long do you keep keys?** Longer than any realistic retry or reconciliation window, and inside the provider's key lifetime; then clean up.
-- **How is this different from exactly-once?** Exactly-once business effects are achieved in practice with at-least-once delivery plus idempotent handling, and only for effects you control or whose owner deduplicates.
+- **Does idempotency give you exactly-once?** Not automatically. At-least-once delivery plus idempotent handling prevents duplicate business effects *within a defined processing boundary* (for example one database transaction, or a provider that honours your key). Across Kafka, a database and an external provider there is no single boundary, so each hop needs its own guarantee, and unknown outcomes still need reconciliation.
 
 **Architect's takeaway:** treat every call with an external side effect as "may be repeated and may have an unknown outcome", and design the operation record, the key and the reconciliation around that.
 

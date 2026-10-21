@@ -136,9 +136,10 @@ Run A is the common production shape: overload turns into long waits, not into r
 server:
   tomcat:
     threads:
-      max: 200            # requests running at once
-    max-connections: 8192 # connections Tomcat accepts and processes
-    accept-count: 100     # operating system's connection queue, used once max-connections is reached
+      max: 200            # requests running at the same time (worker threads)
+    max-connections: 8192 # connections Tomcat accepts and processes at once
+    accept-count: 100     # OS backlog of connection requests once max-connections is reached;
+                          # not a request queue, and not used merely because worker threads are busy
 ```
 
 ```java
