@@ -1,0 +1,10 @@
+# Learning Progress Snapshot
+- Subject: Microservices (track 4), starting with the Saga pattern (series 4.8, `notes/04-microservices/08-saga/`)
+- Goal: Design, implement and operate cross-service business transactions with sagas, and explain the trade-offs as an engineer and architect
+- Status: Learning (Saga series done on 2026-10-23; the rest of the Microservices track is planned)
+- Completed: 4.1 Microservices overview (short, area map); 4.8.1 Saga overview (the problem, why not 2PC, the idea, two styles), 4.8.2 steps and compensating transactions (compensable, pivot, retriable; idempotent and out-of-order compensations), 4.8.3 choreography (events, implicit flow, lost compensation), 4.8.4 orchestration (state machine, saga log, duplicate replies), 4.8.5 reliable messaging (dual write, outbox, relay with SKIP LOCKED, inbox; real PostgreSQL), 4.8.6 isolation anomalies and countermeasures (dirty reads, lost updates, semantic lock, deltas), 4.8.7 failures, timeouts and operations (unknown outcome, retries, needs-attention, stuck-saga reaper), 4.8.8 case study: ShopFlow checkout saga (eight scenarios, saga table), 4.8.99 cheat sheet; each lesson has runnable Java 21 simulations with exact output; lessons that use tools have an "Alternatives in the industry" table
+- Strong areas: not assessed (answers are included in the notes; none are collected)
+- Gaps to revisit: none recorded; the simulations run in one JVM with no network and no real broker, so network-level behaviour (ordering, redelivery, partitions) is described, not observed. The saga tools in the alternatives tables were not run
+- Environment/setup: Java 21 (OpenJDK 21.0.8); PostgreSQL 16.15 in a throwaway `postgres:16-alpine` container (name `sf-learn-pg`, label `learning=notes`) on Rancher Desktop's engine, removed afterwards
+- Last exercise and result: none collected; solutions are in the notes
+- Next lesson: your choice: the rest of the Microservices track (4.2 to 4.7, 4.9 to 4.12, for example CQRS and event sourcing as the natural follow-up to sagas), AWS core services (9.4), the paused Java Streams series (13.2.5), or RabbitMQ (2.3.x)

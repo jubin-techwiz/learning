@@ -62,6 +62,25 @@ Kafka series complete. Start with the overview (queues versus logs, and the four
 
 **Kafka series complete (2.2.1 to 2.2.18).** Planned in this area: a RabbitMQ series (2.3.x) and a comparison note, "choosing a messaging system" (2.4).
 
+### 04 · Microservices
+
+Added on request (2026-10-23): the saga design pattern first. The area overview is short; the other microservices topics follow later. The saga lessons use small runnable Java 21 programs that simulate services and inject failures.
+
+| Step | Note | Status |
+|---|---|---|
+| 4.1 | [Microservices: the big picture (area overview)](04-microservices/01-microservices-overview.md) | Done |
+| 4.8.1 | [Saga: the big picture and learning order (series index)](04-microservices/08-saga/01-saga-overview.md) | Done |
+| 4.8.2 | [Steps and compensating transactions](04-microservices/08-saga/02-saga-steps-and-compensation.md) | Done |
+| 4.8.3 | [Choreography: coordinating with events](04-microservices/08-saga/03-choreography.md) | Done |
+| 4.8.4 | [Orchestration: a coordinator with state](04-microservices/08-saga/04-orchestration.md) | Done |
+| 4.8.5 | [Reliable messaging for sagas: outbox, inbox, idempotent consumers](04-microservices/08-saga/05-reliable-messaging-outbox-inbox.md) | Done |
+| 4.8.6 | [Isolation anomalies and countermeasures](04-microservices/08-saga/06-isolation-and-countermeasures.md) | Done |
+| 4.8.7 | [Failures, timeouts and operating sagas](04-microservices/08-saga/07-failures-timeouts-operations.md) | Done |
+| 4.8.8 | [Case study: the ShopFlow checkout saga](04-microservices/08-saga/08-case-checkout-saga.md) | Done |
+| 4.8.99 | [Saga cheat sheet](04-microservices/08-saga/99-saga-cheat-sheet.md) (revision) | Done |
+
+**Saga series complete (4.8.1 to 4.8.8).** Planned in this area: the rest of the track: when to use microservices, decomposition, communication, gateway, discovery, data per service, CQRS and event sourcing, resilience between services, testing, versioning. The full list is in the [roadmap](roadmap.md).
+
 ### 09 · Cloud and containers
 
 Added on request (2026-10-22): Docker first, then Kubernetes. Start with the overview. The lessons are hands-on: they use real commands on your own machine and show the output they produced.
@@ -194,6 +213,8 @@ Only the concept, the terms, the ShopFlow example, how it works, the questions, 
 **Hands-on Java notes:** [13.2.1](13-java/02-streams/01-streams-overview.md), [13.2.2](13-java/02-streams/02-pipeline-laziness.md), [13.2.3](13-java/02-streams/03-transforming-filtering.md) and [13.2.4](13-java/02-streams/04-terminal-operations-optional.md) are built around complete Java 21 programs with their exact output, experiments and practice exercises with solutions. How to run them on a Mac (terminal or VS Code) is in [the Java overview](13-java/01-java-overview.md), section 5.
 
 **Runnable system design examples:** [14.3](14-system-design/03-back-of-the-envelope-estimation.md) to [14.20](14-system-design/20-case-shopflow-flash-sale.md) use small Java 21 programs (estimates, and simulations of design problems), so you can change the assumptions and run them again.
+
+**Runnable saga examples:** [4.8.1](04-microservices/08-saga/01-saga-overview.md) to [4.8.8](04-microservices/08-saga/08-case-checkout-saga.md) use small Java 21 simulations of services with injected failures; [4.8.5](04-microservices/08-saga/05-reliable-messaging-outbox-inbox.md) and [4.8.8](04-microservices/08-saga/08-case-checkout-saga.md) also show real PostgreSQL output.
 
 ## The running example: ShopFlow
 

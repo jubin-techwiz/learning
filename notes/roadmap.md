@@ -33,6 +33,7 @@ You can have several areas open at once. When you switch, the area you leave is 
 | 2 Messaging, Kafka | Done | 2.1, 2.2.1 to 2.2.18 (Kafka series complete) | Next in this area: RabbitMQ series (2.3) | Resumed on 2026-10-21 after the resilience notes were finished. Kafka error handling and the idempotent producer (2.2.8, 2.2.9) have their resilience prerequisites in place |
 | 13 Java, Streams | Paused | 13.1, 13.2.1 to 13.2.4 | 13.2.5 Collectors | Added on 2026-10-21 at your request. Numbered 13 so existing note paths don't change; the order of learning is set by "Do next", not by the number. Paused on 2026-10-22 when you chose system design; nothing is missing to resume |
 | 9 Cloud and containers, Docker and Kubernetes | Learning | 9.1, 9.2.1 to 9.2.9, 9.3.1 to 9.3.10 | 9.4 AWS core services for architects | Added on 2026-10-22 at your request (Docker, then Kubernetes). Builds on resilience (1.x) and system design (14.x). Hands-on on your Mac: Docker Desktop for the Docker series, the Rancher Desktop cluster for Kubernetes |
+| 4 Microservices, Saga | Learning | 4.1, 4.8.1 to 4.8.8, 4.8.99 | Saga series complete; next in this area: 4.2 to 4.7, 4.9 to 4.12 | Added on 2026-10-23 at your request (saga design pattern first). The area overview 4.1 is short; steps 4.2 to 4.7 and 4.9 to 4.12 follow later. Builds on resilience (1.x), messaging (2.x) and system design (14.x) |
 | 14 System design | Done | 14.1 to 14.20 (area complete) | none | Added on 2026-10-22 at your request, numbered 14 for the same reason. Builds on resilience (1.x) and messaging (2.x), which are done |
 
 ## Do next
@@ -45,7 +46,7 @@ You can have several areas open at once. When you switch, the area you leave is 
 | 4 | RabbitMQ series | 2.3.1 to 2.3.14 | The queue family, to compare with Kafka |
 | 5 | Choosing a messaging system | 2.4 | Completes the messaging area with a decision guide |
 | 6 | Design patterns | 3.x | Next track in your order |
-| 7 | Microservices | 4.x | Builds on resilience, messaging, design patterns and system design |
+| 7 | Microservices (rest of the track) | 4.2 to 4.7, 4.9 to 4.12 | Builds on resilience, messaging, design patterns and system design |
 
 ## Tracks
 
@@ -145,18 +146,32 @@ Why: microservices solve organisational and scaling problems and create distribu
 
 | Step | Topic | Role | Status |
 |---|---|---|---|
-| 4.1 | Microservices: the big picture | Architect | Planned |
+| 4.1 | [Microservices: the big picture](04-microservices/01-microservices-overview.md) | Architect | Done |
 | 4.2 | When to use them, and when not (modular monolith) | Architect | Planned |
 | 4.3 | Decomposition and bounded contexts | Architect | Planned |
 | 4.4 | Service communication: synchronous and asynchronous | Both | Planned |
 | 4.5 | API gateway and BFF | Architect | Planned |
 | 4.6 | Service discovery and configuration | Both | Planned |
 | 4.7 | Data per service and consistency | Architect | Planned |
-| 4.8 | Saga and the outbox pattern | Both | Planned |
+| 4.8 | Saga and the outbox pattern (series below) | Both | Done |
 | 4.9 | CQRS and event sourcing | Architect | Planned |
 | 4.10 | Resilience between services (links to track 1) | Both | Planned |
 | 4.11 | Testing microservices | Both | Planned |
 | 4.12 | Versioning, deployment and ownership | Architect | Planned |
+
+**Series 4.8, Saga (fundamentals to advanced).** Written as a series: `04-microservices/08-saga/`. Hands-on: runnable Java 21 simulations with injected failures; the outbox lesson also uses a real PostgreSQL.
+
+| Step | Topic | Level | Role | Status |
+|---|---|---|---|---|
+| 4.8.1 | [Saga: the big picture and learning order](04-microservices/08-saga/01-saga-overview.md) | Fundamentals | Both | Done |
+| 4.8.2 | [Steps and compensating transactions](04-microservices/08-saga/02-saga-steps-and-compensation.md) | Fundamentals | Both | Done |
+| 4.8.3 | [Choreography: coordinating with events](04-microservices/08-saga/03-choreography.md) | Intermediate | Both | Done |
+| 4.8.4 | [Orchestration: a coordinator with state](04-microservices/08-saga/04-orchestration.md) | Intermediate | Both | Done |
+| 4.8.5 | [Reliable messaging for sagas: outbox, inbox, idempotent consumers](04-microservices/08-saga/05-reliable-messaging-outbox-inbox.md) | Intermediate | Both | Done |
+| 4.8.6 | [Isolation anomalies and countermeasures](04-microservices/08-saga/06-isolation-and-countermeasures.md) | Advanced | Both | Done |
+| 4.8.7 | [Failures, timeouts and operating sagas](04-microservices/08-saga/07-failures-timeouts-operations.md) | Advanced | Both | Done |
+| 4.8.8 | [Case study: the ShopFlow checkout saga](04-microservices/08-saga/08-case-checkout-saga.md) | Advanced | Both | Done |
+| 4.8.99 | [Saga cheat sheet (revision)](04-microservices/08-saga/99-saga-cheat-sheet.md) | | Both | Done |
 
 ### 5. Architecture foundations
 Why: an architect's main job is choosing between trade-offs and explaining the choice.
