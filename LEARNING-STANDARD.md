@@ -187,6 +187,8 @@ Never let a guarantee from one layer be read as covering another.
 
 For substantial concepts, give the decision criteria: **when to use, when not to use, alternatives**, and only those dimensions that change the decision (reliability, ordering, performance and scale, operational complexity, security, observability, cost). Compare technologies against a **specific requirement and workload**, never as universally better or worse.
 
+**Alternatives in the industry.** Whenever a lesson uses a specific tool or product (a local cluster, a scanner, an ingress controller, a build tool), add a short **Alternatives in the industry** table so the learner sees the landscape: the tool or product, what it is in one line, and when you are likely to meet it. Keep it brief (a few rows, not a comparison); say that the alternatives were not run in the lesson, and do not make universal "better" claims. Put it right after the worked examples or in the decisions section.
+
 ## 11. Hands-on practice
 
 - Practice is **optional for conceptual topics** and **expected for programming topics**: add it whenever running something teaches more than reading.
@@ -271,6 +273,7 @@ Before a note is considered done:
 - [ ] The "how it works" part says what starts the operation, who takes part, how state moves, who guarantees what, and what happens on success and failure.
 - [ ] Failure scenarios use the five-part format; layers of guarantees are not mixed up.
 - [ ] Decisions are compared against a specific requirement; no "always better" claims.
+- [ ] Where the lesson uses a specific tool or product, a short "Alternatives in the industry" table names the common alternatives (not run, not ranked).
 - [ ] No unverified fact in the teaching sections; versions recorded for defaults; no invented numbers.
 - [ ] Where versions matter: a version note with the baseline, newer features and the version that introduced each, and the hands-on baseline; "introduced in" claims come from official sources where practical.
 - [ ] Code is small, explained and labelled with its status.

@@ -149,6 +149,13 @@ updated: "<YYYY-MM-DD>"
 
 <Reliability, ordering, scale, operations, security, observability or cost, whichever matter here.>
 
+<!-- When the lesson uses a specific tool or product: a short landscape table, not a comparison. Say the alternatives were not run. -->
+### Alternatives in the industry
+
+| Tool or product | What it is | When you meet it |
+|---|---|---|
+| <...> | <one line> | <...> |
+
 <!-- Optional. -->
 **Common mistakes:** <one line, semicolon-separated: the gotchas not already covered as failure scenarios>
 

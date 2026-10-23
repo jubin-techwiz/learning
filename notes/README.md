@@ -62,6 +62,37 @@ Kafka series complete. Start with the overview (queues versus logs, and the four
 
 **Kafka series complete (2.2.1 to 2.2.18).** Planned in this area: a RabbitMQ series (2.3.x) and a comparison note, "choosing a messaging system" (2.4).
 
+### 09 · Cloud and containers
+
+Added on request (2026-10-22): Docker first, then Kubernetes. Start with the overview. The lessons are hands-on: they use real commands on your own machine and show the output they produced.
+
+| Step | Note | Status |
+|---|---|---|
+| 9.1 | [Cloud and containers: the big picture](09-cloud-and-containers/01-cloud-and-containers-overview.md) | Done |
+| 9.2.1 | [Docker: the big picture and learning order (series index)](09-cloud-and-containers/02-docker/01-docker-overview.md) | Done |
+| 9.2.2 | [Containers: isolated processes with limits](09-cloud-and-containers/02-docker/02-containers-isolated-processes.md) | Done |
+| 9.2.3 | [Images and layers](09-cloud-and-containers/02-docker/03-images-and-layers.md) | Done |
+| 9.2.4 | [A Dockerfile for a Java service](09-cloud-and-containers/02-docker/04-dockerfile-java-service.md) | Done |
+| 9.2.5 | [Networking and ports](09-cloud-and-containers/02-docker/05-networking-and-ports.md) | Done |
+| 9.2.6 | [Data and configuration: volumes and environment](09-cloud-and-containers/02-docker/06-data-and-configuration.md) | Done |
+| 9.2.7 | [Lifecycle: signals, graceful shutdown, health checks and restarts](09-cloud-and-containers/02-docker/07-lifecycle.md) | Done |
+| 9.2.8 | [Docker Compose for local development](09-cloud-and-containers/02-docker/08-docker-compose.md) | Done |
+| 9.2.9 | [Container security and supply chain basics](09-cloud-and-containers/02-docker/09-container-security.md) | Done |
+| | [Docker cheat sheet](09-cloud-and-containers/02-docker/99-docker-cheat-sheet.md) (revision) | Done |
+| 9.3.1 | [Kubernetes: the big picture and learning order (series index)](09-cloud-and-containers/03-kubernetes/01-kubernetes-overview.md) | Done |
+| 9.3.2 | [Pods, ReplicaSets and Deployments](09-cloud-and-containers/03-kubernetes/02-pods-replicasets-deployments.md) | Done |
+| 9.3.3 | [Services, DNS and Ingress](09-cloud-and-containers/03-kubernetes/03-services-dns-ingress.md) | Done |
+| 9.3.4 | [Configuration and secrets](09-cloud-and-containers/03-kubernetes/04-configuration-and-secrets.md) | Done |
+| 9.3.5 | [Probes, rolling updates and graceful shutdown](09-cloud-and-containers/03-kubernetes/05-probes-rolling-updates-graceful-shutdown.md) | Done |
+| 9.3.6 | [Resources, scheduling and autoscaling](09-cloud-and-containers/03-kubernetes/06-resources-scheduling-autoscaling.md) | Done |
+| 9.3.7 | [Storage and StatefulSets](09-cloud-and-containers/03-kubernetes/07-storage-statefulsets.md) | Done |
+| 9.3.8 | [Packaging and delivery: Kustomize and Helm](09-cloud-and-containers/03-kubernetes/08-kustomize-and-helm.md) | Done |
+| 9.3.9 | [Kubernetes security: RBAC, service accounts and Pod security](09-cloud-and-containers/03-kubernetes/09-kubernetes-security.md) | Done |
+| 9.3.10 | [Troubleshooting and day-two operations](09-cloud-and-containers/03-kubernetes/10-troubleshooting-day-two.md) | Done |
+| | [Kubernetes cheat sheet](09-cloud-and-containers/03-kubernetes/99-kubernetes-cheat-sheet.md) (revision) | Done |
+
+**Docker (9.2.1 to 9.2.9) and Kubernetes (9.3.1 to 9.3.10) series complete.** Planned in this area: AWS core services, infrastructure as code and cloud cost. The full list is in the [roadmap](roadmap.md).
+
 ### 13 · Java
 
 Added on request. The Streams series has started; the other Java topics are planned.
@@ -72,8 +103,39 @@ Added on request. The Streams series has started; the other Java topics are plan
 | 13.2.1 | [Java Stream API: the big picture](13-java/02-streams/01-streams-overview.md) (series index) | Done |
 | 13.2.2 | [The pipeline: source, operations and laziness](13-java/02-streams/02-pipeline-laziness.md) | Done |
 | 13.2.3 | [Transforming and filtering: map, filter, flatMap, sorted, limit](13-java/02-streams/03-transforming-filtering.md) | Done |
+| 13.2.4 | [Terminal operations and Optional](13-java/02-streams/04-terminal-operations-optional.md) | Done |
 
-**Planned in this series:** 13.2.4 to 13.2.10 (terminal operations, collectors, primitive streams, lambdas in pipelines, parallel streams, streams versus loops, Stream Gatherers). The full list is in the [roadmap](roadmap.md).
+**Planned in this series:** 13.2.5 to 13.2.10 (collectors, primitive streams, lambdas in pipelines, parallel streams, streams versus loops, Stream Gatherers). The series is paused at 13.2.5 while system design is the active area. The full list is in the [roadmap](roadmap.md).
+
+### 14 · System design
+
+**Complete (20 of 20 steps).** Added on request and written on 2026-10-22. Start with the overview, which explains the method, the building blocks and how they relate. The method and the numbers come first; the building blocks and case studies follow. Revise with the cheat sheet.
+
+| Step | Note | Status |
+|---|---|---|
+| 14.1 | [System design: the big picture](14-system-design/01-system-design-overview.md) | Done |
+| 14.2 | [Requirements and the design method](14-system-design/02-requirements-design-method.md) | Done |
+| 14.3 | [Back-of-the-envelope estimation](14-system-design/03-back-of-the-envelope-estimation.md) | Done |
+| 14.4 | [Scaling out: stateless services and horizontal scaling](14-system-design/04-scaling-out-stateless-services.md) | Done |
+| 14.5 | [Load balancing](14-system-design/05-load-balancing.md) | Done |
+| 14.6 | [Caching](14-system-design/06-caching.md) | Done |
+| 14.7 | [Choosing a database](14-system-design/07-choosing-a-database.md) | Done |
+| 14.8 | [Replication and read replicas](14-system-design/08-replication-read-replicas.md) | Done |
+| 14.9 | [Partitioning and sharding](14-system-design/09-partitioning-sharding.md) | Done |
+| 14.10 | [Consistency trade-offs: CAP, PACELC and quorums](14-system-design/10-consistency-cap-pacelc-quorums.md) | Done |
+| 14.11 | [Asynchronous processing: queues, workers and fan-out](14-system-design/11-asynchronous-processing.md) | Done |
+| 14.12 | [Object storage and content delivery networks](14-system-design/12-object-storage-cdn.md) | Done |
+| 14.13 | [Unique ID generation](14-system-design/13-unique-id-generation.md) | Done |
+| 14.14 | [Multi-region design and disaster recovery](14-system-design/14-multi-region-disaster-recovery.md) | Done |
+| 14.15 | [Case study: URL shortener](14-system-design/15-case-url-shortener.md) | Done |
+| 14.16 | [Case study: distributed rate limiter](14-system-design/16-case-distributed-rate-limiter.md) | Done |
+| 14.17 | [Case study: notification system](14-system-design/17-case-notification-system.md) | Done |
+| 14.18 | [Case study: news feed](14-system-design/18-case-news-feed.md) | Done |
+| 14.19 | [Case study: chat system](14-system-design/19-case-chat-system.md) | Done |
+| 14.20 | [Case study: ShopFlow flash sale](14-system-design/20-case-shopflow-flash-sale.md) | Done |
+| | [System design cheat sheet](14-system-design/99-system-design-cheat-sheet.md) (revision) | Done |
+
+**System design area complete (14.1 to 14.20):** the method and estimation, nine building blocks, consistency, asynchronous processing, storage and CDNs, ids, multi-region, and six case studies.
 
 ### Coming next
 
@@ -129,7 +191,9 @@ Only the concept, the terms, the ShopFlow example, how it works, the questions, 
 
 **Notes with a "Try it yourself" experiment:** [2.2.2](02-messaging/02-kafka/02-log-topics-partitions-offsets.md), [2.2.4](02-messaging/02-kafka/04-consumers-consumer-groups.md), [2.2.5](02-messaging/02-kafka/05-offset-commits-delivery-guarantees.md), [2.2.7](02-messaging/02-kafka/07-rebalancing-static-membership.md) and [2.2.13](02-messaging/02-kafka/13-retention-compaction-tiered-storage.md). They need only a local Kafka broker and its command-line tools, and were run on Apache Kafka 4.3.2 on 2026-10-21.
 
-**Hands-on Java notes:** [13.2.1](13-java/02-streams/01-streams-overview.md), [13.2.2](13-java/02-streams/02-pipeline-laziness.md) and [13.2.3](13-java/02-streams/03-transforming-filtering.md) are built around complete Java 21 programs with their exact output, experiments and practice exercises with solutions. How to run them on a Mac (terminal or VS Code) is in [the Java overview](13-java/01-java-overview.md), section 5.
+**Hands-on Java notes:** [13.2.1](13-java/02-streams/01-streams-overview.md), [13.2.2](13-java/02-streams/02-pipeline-laziness.md), [13.2.3](13-java/02-streams/03-transforming-filtering.md) and [13.2.4](13-java/02-streams/04-terminal-operations-optional.md) are built around complete Java 21 programs with their exact output, experiments and practice exercises with solutions. How to run them on a Mac (terminal or VS Code) is in [the Java overview](13-java/01-java-overview.md), section 5.
+
+**Runnable system design examples:** [14.3](14-system-design/03-back-of-the-envelope-estimation.md) to [14.20](14-system-design/20-case-shopflow-flash-sale.md) use small Java 21 programs (estimates, and simulations of design problems), so you can change the assumptions and run them again.
 
 ## The running example: ShopFlow
 

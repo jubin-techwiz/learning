@@ -8,7 +8,7 @@ tags: [index, roadmap, architect, engineer]
 This is the map of what to learn, **in the order to learn it**. Each topic becomes one short note in simple language. Every track and every series starts with an overview note, then goes step by step, with earlier topics being the foundation for later ones.
 
 > [!NOTE]
-> Drafted on 2026-10-19 and restructured on 2026-10-20. Tracks are numbered in the order you are learning them: resilience first, then Kafka (fundamentals to advanced), design patterns and microservices, followed by architecture foundations and the other tracks. It is a plan, not an official curriculum. Topic lists for tracks that are not started yet are proposals; reorder, add or remove freely.
+> Drafted on 2026-10-19 and restructured on 2026-10-20. Tracks are numbered in the order you are learning them: resilience first, then Kafka (fundamentals to advanced), design patterns and microservices, followed by architecture foundations and the other tracks. System design was added on 2026-10-22 as track 14, at your request, and completed the same day (14.1 to 14.20); the Java Streams series is paused at 13.2.5. It is a plan, not an official curriculum. Topic lists for tracks that are not started yet are proposals; reorder, add or remove freely.
 
 ## How to read the numbers
 
@@ -31,17 +31,21 @@ You can have several areas open at once. When you switch, the area you leave is 
 |---|---|---|---|---|
 | 1 Resilience | Done | 1.1 to 1.10 | none | All ten notes follow the current note format (migrated and reviewed 2026-10-21). Revise from the cheat sheet. Hands-on demo only if you ask |
 | 2 Messaging, Kafka | Done | 2.1, 2.2.1 to 2.2.18 (Kafka series complete) | Next in this area: RabbitMQ series (2.3) | Resumed on 2026-10-21 after the resilience notes were finished. Kafka error handling and the idempotent producer (2.2.8, 2.2.9) have their resilience prerequisites in place |
-| 13 Java, Streams | Learning | 13.1, 13.2.1 to 13.2.3 | 13.2.4 Terminal operations and `Optional` | Added on 2026-10-21 at your request. Numbered 13 so existing note paths don't change; the order of learning is set by "Do next", not by the number |
+| 13 Java, Streams | Paused | 13.1, 13.2.1 to 13.2.4 | 13.2.5 Collectors | Added on 2026-10-21 at your request. Numbered 13 so existing note paths don't change; the order of learning is set by "Do next", not by the number. Paused on 2026-10-22 when you chose system design; nothing is missing to resume |
+| 9 Cloud and containers, Docker and Kubernetes | Learning | 9.1, 9.2.1 to 9.2.9, 9.3.1 to 9.3.10 | 9.4 AWS core services for architects | Added on 2026-10-22 at your request (Docker, then Kubernetes). Builds on resilience (1.x) and system design (14.x). Hands-on on your Mac: Docker Desktop for the Docker series, the Rancher Desktop cluster for Kubernetes |
+| 14 System design | Done | 14.1 to 14.20 (area complete) | none | Added on 2026-10-22 at your request, numbered 14 for the same reason. Builds on resilience (1.x) and messaging (2.x), which are done |
 
 ## Do next
 
 | # | Topic | Step | Why now |
 |---|---|---|---|
-| 1 | Java Stream API series | 13.2.4 onward | You chose it next (2026-10-21); 13.2.1 to 13.2.3 are written, hands-on |
-| 2 | RabbitMQ series | 2.3.1 to 2.3.14 | The queue family, to compare with Kafka |
-| 3 | Choosing a messaging system | 2.4 | Completes the messaging area with a decision guide |
-| 4 | Design patterns | 3.x | Next track in your order |
-| 5 | Microservices | 4.x | Builds on resilience, messaging and design patterns |
+| 1 | AWS core services for architects | 9.4 | Docker and Kubernetes are complete; the cloud services they run on come next (hands-on needs an AWS account, so confirm how to proceed first) |
+| 2 | Java Stream API series | 13.2.5 onward | Paused when you chose system design; 13.2.1 to 13.2.4 are written, hands-on, nothing missing to resume |
+| 3 | System design interview practice | 12.6 | Practise the method of 14.2 on new problems now that the system design area is complete |
+| 4 | RabbitMQ series | 2.3.1 to 2.3.14 | The queue family, to compare with Kafka |
+| 5 | Choosing a messaging system | 2.4 | Completes the messaging area with a decision guide |
+| 6 | Design patterns | 3.x | Next track in your order |
+| 7 | Microservices | 4.x | Builds on resilience, messaging, design patterns and system design |
 
 ## Tracks
 
@@ -177,6 +181,9 @@ Why: most production incidents are really data consistency problems.
 | 6.4 | Caching strategies and invalidation | Both | Planned |
 | 6.5 | Replication, partitioning and sharding | Architect | Planned |
 
+> [!NOTE]
+> 6.2, 6.4 and 6.5 overlap the system design notes 14.10, 14.6, 14.8 and 14.9, which are taught first, at design level. When this track starts, its notes go deeper (database internals) and link to track 14 instead of repeating it.
+
 ### 7. APIs and integration
 Why: APIs are the contracts between teams, and they are expensive to change.
 
@@ -200,18 +207,52 @@ Why: security decisions are hard to retrofit.
 | 8.5 | Secrets management and the OWASP Top 10 | Both | Planned |
 
 ### 9. Cloud and containers
-Why: where and how your services run decides cost, scale and recovery time.
+Why: where and how your services run decides cost, scale and recovery time. The track starts with Docker (a service packaged as an image and run as a container), then Kubernetes (running many containers reliably across machines), then the cloud around them.
 
 | Step | Topic | Role | Status |
 |---|---|---|---|
-| 9.1 | Cloud and containers: the big picture | Both | Planned |
-| 9.2 | Docker image basics and good practice | Engineer | Planned |
-| 9.3 | Kubernetes core: pods, services, deployments | Both | Planned |
-| 9.4 | Kubernetes probes and rolling updates | Both | Planned |
-| 9.5 | Autoscaling (HPA) and resource limits | Both | Planned |
-| 9.6 | AWS core services for architects | Architect | Planned |
-| 9.7 | Infrastructure as code (Terraform) | Both | Planned |
-| 9.8 | Cloud cost awareness | Architect | Planned |
+| 9.1 | [Cloud and containers: the big picture](09-cloud-and-containers/01-cloud-and-containers-overview.md) | Both | Done |
+
+**Series 9.2, Docker (fundamentals to practice).** Written as a series: `09-cloud-and-containers/02-docker/`. Hands-on: every lesson uses real commands and their output.
+
+| Step | Topic | Level | Role | Status |
+|---|---|---|---|---|
+| 9.2.1 | [Docker: the big picture and learning order](09-cloud-and-containers/02-docker/01-docker-overview.md) | Fundamentals | Both | Done |
+| 9.2.2 | [Containers: isolated processes with limits](09-cloud-and-containers/02-docker/02-containers-isolated-processes.md) | Fundamentals | Both | Done |
+| 9.2.3 | [Images and layers](09-cloud-and-containers/02-docker/03-images-and-layers.md) | Fundamentals | Engineer | Done |
+| 9.2.4 | [A Dockerfile for a Java service](09-cloud-and-containers/02-docker/04-dockerfile-java-service.md) | Fundamentals | Engineer | Done |
+| 9.2.5 | [Networking and ports](09-cloud-and-containers/02-docker/05-networking-and-ports.md) | Intermediate | Engineer | Done |
+| 9.2.6 | [Data and configuration: volumes and environment](09-cloud-and-containers/02-docker/06-data-and-configuration.md) | Intermediate | Engineer | Done |
+| 9.2.7 | [Lifecycle: signals, graceful shutdown, health checks and restarts](09-cloud-and-containers/02-docker/07-lifecycle.md) | Intermediate | Both | Done |
+| 9.2.8 | [Docker Compose for local development](09-cloud-and-containers/02-docker/08-docker-compose.md) | Intermediate | Engineer | Done |
+| 9.2.9 | [Container security and supply chain basics](09-cloud-and-containers/02-docker/09-container-security.md) | Advanced | Both | Done |
+| 9.2.99 | [Docker cheat sheet (revision)](09-cloud-and-containers/02-docker/99-docker-cheat-sheet.md) | | Both | Done |
+
+**Series 9.3, Kubernetes (fundamentals to advanced).** Written as a series: `09-cloud-and-containers/03-kubernetes/`.
+
+| Step | Topic | Level | Role | Status |
+|---|---|---|---|---|
+| 9.3.1 | [Kubernetes: the big picture and learning order](09-cloud-and-containers/03-kubernetes/01-kubernetes-overview.md) | Fundamentals | Both | Done |
+| 9.3.2 | [Pods, ReplicaSets and Deployments](09-cloud-and-containers/03-kubernetes/02-pods-replicasets-deployments.md) | Fundamentals | Both | Done |
+| 9.3.3 | [Services, DNS and Ingress](09-cloud-and-containers/03-kubernetes/03-services-dns-ingress.md) | Fundamentals | Both | Done |
+| 9.3.4 | [Configuration and secrets](09-cloud-and-containers/03-kubernetes/04-configuration-and-secrets.md) | Intermediate | Engineer | Done |
+| 9.3.5 | [Probes, rolling updates and graceful shutdown](09-cloud-and-containers/03-kubernetes/05-probes-rolling-updates-graceful-shutdown.md) | Intermediate | Both | Done |
+| 9.3.6 | [Resources, scheduling and autoscaling](09-cloud-and-containers/03-kubernetes/06-resources-scheduling-autoscaling.md) | Intermediate | Both | Done |
+| 9.3.7 | [Storage and StatefulSets](09-cloud-and-containers/03-kubernetes/07-storage-statefulsets.md) | Advanced | Both | Done |
+| 9.3.8 | [Packaging and delivery: Kustomize and Helm](09-cloud-and-containers/03-kubernetes/08-kustomize-and-helm.md) | Advanced | Engineer | Done |
+| 9.3.9 | [Security: RBAC, service accounts and Pod security](09-cloud-and-containers/03-kubernetes/09-kubernetes-security.md) | Advanced | Both | Done |
+| 9.3.10 | [Troubleshooting and day-two operations](09-cloud-and-containers/03-kubernetes/10-troubleshooting-day-two.md) | Advanced | Both | Done |
+| 9.3.99 | [Kubernetes cheat sheet (revision)](09-cloud-and-containers/03-kubernetes/99-kubernetes-cheat-sheet.md) | | Both | Done |
+
+**After the two series, the cloud around them:**
+
+| Step | Topic | Role | Status |
+|---|---|---|---|
+| 9.4 | AWS core services for architects | Architect | Planned |
+| 9.5 | Infrastructure as code (Terraform) | Both | Planned |
+| 9.6 | Cloud cost awareness | Architect | Planned |
+
+The old placeholder steps 9.2 to 9.8 were reorganised into these series on 2026-10-22 (nothing had been written under them). The topic lists are proposals; the Kubernetes series is refined when it starts.
 
 ### 10. Observability and operations
 Why: you can't fix what you can't see.
@@ -248,6 +289,8 @@ Why: much of the architect role is communication and judgement, not code.
 | 12.5 | Presenting trade-offs to non-technical people | Architect | Planned |
 | 12.6 | System design interview practice | Both | Planned |
 
+12.6 will be a practice plan that uses the method of [14.2](14-system-design/02-requirements-design-method.md) and the case studies 14.15 to 14.20, rather than a separate set of designs.
+
 ### 13. Java language and platform
 Why: every ShopFlow service is written in Java, and architecture decisions about readability, parallelism and performance depend on what the language and the JVM really guarantee. This track was added after the original twelve, so it is numbered 13 to keep existing paths stable.
 
@@ -262,7 +305,7 @@ Why: every ShopFlow service is written in Java, and architecture decisions about
 | 13.2.1 | [Java Stream API: the big picture](13-java/02-streams/01-streams-overview.md) | Fundamentals | Both | Done |
 | 13.2.2 | [The pipeline: source, operations and laziness](13-java/02-streams/02-pipeline-laziness.md) | Fundamentals | Engineer | Done |
 | 13.2.3 | [Transforming and filtering: `map`, `filter`, `flatMap`, `sorted`, `limit`](13-java/02-streams/03-transforming-filtering.md) | Fundamentals | Engineer | Done |
-| 13.2.4 | Terminal operations and `Optional` | Fundamentals | Engineer | Planned |
+| 13.2.4 | [Terminal operations and `Optional`](13-java/02-streams/04-terminal-operations-optional.md) | Fundamentals | Engineer | Done |
 | 13.2.5 | Collectors: `groupingBy`, `toMap`, `partitioningBy`, `teeing` | Intermediate | Engineer | Planned |
 | 13.2.6 | Primitive streams and boxing | Intermediate | Engineer | Planned |
 | 13.2.7 | Lambdas in pipelines: statelessness, side effects, exceptions | Intermediate | Both | Planned |
@@ -274,10 +317,39 @@ Why: every ShopFlow service is written in Java, and architecture decisions about
 
 | Destination | Material to move from 13.2.2 |
 |---|---|
-| 13.2.4 Terminal operations | `Stream.toList()` versus `Collectors.toList()` and list mutability |
+| 13.2.4 Terminal operations | `Stream.toList()` versus `Collectors.toList()` and list mutability (**done** 2026-10-22) |
 | 13.2.7 Lambdas in pipelines | Side effects, `peek()`, shared mutable state and interference |
 | 13.2.8 Parallel streams | The detailed parallel execution trace and performance considerations |
 
 Other Java topics (records and pattern matching, concurrency and virtual threads, memory and the JVM) are proposals, to be listed when they start.
+
+### 14. System design
+Why: turning requirements into components, data and interactions that hold up at the expected scale, and defending the trade-offs, is the core of the architect's job and of senior interviews. Added on 2026-10-22 and numbered 14 to keep existing paths stable. Written as a flat area: `14-system-design/`. **Complete (14.1 to 14.20, 2026-10-22).**
+
+| Step | Topic | Level | Role | Status |
+|---|---|---|---|---|
+| 14.1 | [System design: the big picture](14-system-design/01-system-design-overview.md) | Fundamentals | Both | Done |
+| 14.2 | [Requirements and the design method](14-system-design/02-requirements-design-method.md) | Fundamentals | Both | Done |
+| 14.3 | [Back-of-the-envelope estimation](14-system-design/03-back-of-the-envelope-estimation.md) | Fundamentals | Both | Done |
+| 14.4 | [Scaling out: stateless services and horizontal scaling](14-system-design/04-scaling-out-stateless-services.md) | Fundamentals | Both | Done |
+| 14.5 | [Load balancing](14-system-design/05-load-balancing.md) | Fundamentals | Both | Done |
+| 14.6 | [Caching](14-system-design/06-caching.md) | Fundamentals | Both | Done |
+| 14.7 | [Choosing a database](14-system-design/07-choosing-a-database.md) | Fundamentals | Architect | Done |
+| 14.8 | [Replication and read replicas](14-system-design/08-replication-read-replicas.md) | Fundamentals | Both | Done |
+| 14.9 | [Partitioning and sharding](14-system-design/09-partitioning-sharding.md) | Fundamentals | Architect | Done |
+| 14.10 | [Consistency trade-offs: CAP, PACELC and quorums](14-system-design/10-consistency-cap-pacelc-quorums.md) | Intermediate | Architect | Done |
+| 14.11 | [Asynchronous processing: queues, workers and fan-out](14-system-design/11-asynchronous-processing.md) | Intermediate | Both | Done |
+| 14.12 | [Object storage and content delivery networks](14-system-design/12-object-storage-cdn.md) | Intermediate | Both | Done |
+| 14.13 | [Unique ID generation](14-system-design/13-unique-id-generation.md) | Intermediate | Both | Done |
+| 14.14 | [Multi-region design and disaster recovery](14-system-design/14-multi-region-disaster-recovery.md) | Advanced | Architect | Done |
+| 14.15 | [Case study: URL shortener](14-system-design/15-case-url-shortener.md) | Advanced | Both | Done |
+| 14.16 | [Case study: distributed rate limiter](14-system-design/16-case-distributed-rate-limiter.md) | Advanced | Both | Done |
+| 14.17 | [Case study: notification system](14-system-design/17-case-notification-system.md) | Advanced | Both | Done |
+| 14.18 | [Case study: news feed](14-system-design/18-case-news-feed.md) | Advanced | Architect | Done |
+| 14.19 | [Case study: chat system](14-system-design/19-case-chat-system.md) | Advanced | Architect | Done |
+| 14.20 | [Case study: ShopFlow flash sale](14-system-design/20-case-shopflow-flash-sale.md) | Advanced | Architect | Done |
+| 14.99 | [System design cheat sheet (revision)](14-system-design/99-system-design-cheat-sheet.md) | | Both | Done |
+
+Overlaps with other tracks (5.2, 6.2, 6.4, 6.5 and 12.6) are listed in [the overview](14-system-design/01-system-design-overview.md), section 5.
 
 Back to [the index](README.md).
