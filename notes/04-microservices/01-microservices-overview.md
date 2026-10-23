@@ -119,14 +119,15 @@ The Saga series depends on the resilience track (timeouts, retries, idempotency)
 
 ## 7. Notes in this area, in learning order
 
-The area is written in the order you choose topics; the first, now complete, is the Saga series.
+The area is written in the order you choose topics; the first two, now complete, are the Saga series and the CQRS and event sourcing series.
 
 | Step | Topic | Status |
 |---|---|---|
 | 4.1 | This overview | Done |
 | 4.2 to 4.7 | When to use them; decomposition; communication; gateway; discovery; data per service | Planned |
 | 4.8.1 to 4.8.8 | The [Saga series](08-saga/01-saga-overview.md), plus the [Saga cheat sheet](08-saga/99-saga-cheat-sheet.md) | Done |
-| 4.9 to 4.12 | CQRS and event sourcing; resilience between services; testing; versioning and ownership | Planned |
+| 4.9.1 to 4.9.7 | The [CQRS and event sourcing series](09-cqrs-event-sourcing/01-cqrs-es-overview.md), plus the [cheat sheet](09-cqrs-event-sourcing/99-cqrs-es-cheat-sheet.md) | Done |
+| 4.10 to 4.12 | Resilience between services; testing; versioning and ownership | Planned |
 
 Revision: the [Saga cheat sheet](08-saga/99-saga-cheat-sheet.md); an area cheat sheet follows later.
 

@@ -376,7 +376,7 @@ Answers are at the end of this note.
 > "In choreography, each participant commits its local transaction and publishes a domain event; the next participant subscribes to it. Success flows forward as events like StockReserved and PaymentSucceeded, and failure flows backward as events like PaymentFailed that make earlier participants compensate. It needs no extra component and adds new reacting services without changing the producer, so it suits short sagas of two to four steps. Its weakness is that the flow exists only as scattered subscriptions: it is hard to see, to change and to test end to end, and the service graph can develop cycles. A forgotten subscription silently loses a compensation. So I keep events as facts with a correlation id, make handlers idempotent, test every failure path of the saga as a whole, document the event map, and switch to orchestration when the flow grows or needs timeouts."
 
 **Likely follow-up questions:**
-- **Is choreography event sourcing?** No: sagas can use events only as messages; event sourcing stores state as events (4.9, planned).
+- **Is choreography event sourcing?** No: sagas can use events only as messages; event sourcing stores state as events ([4.9.3](../09-cqrs-event-sourcing/03-event-sourcing.md)).
 - **How do I see where an order is?** Search by correlation id in logs and traces, or keep a read model fed by the events.
 - **Can I mix both?** Yes: orchestrate the core checkout and let other services react to its events by choreography.
 

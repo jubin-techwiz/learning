@@ -578,7 +578,7 @@ Answers are at the end of this note.
 
 **Architect's takeaway:** a saga is a promise that every business transaction ends in a state you can name, even after crashes and duplicates. Write the steps, the undo of each, the point of no return, the lock, and the failure matrix before writing code, and test each row.
 
-**Next topic:** the Saga cheat sheet (4.8.99, planned) summarises the series for revision.
+**Next topic:** the Saga cheat sheet ([4.8.99](99-saga-cheat-sheet.md)) summarises the series for revision.
 
 ## 10. Verification and sources
 

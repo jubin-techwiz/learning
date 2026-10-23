@@ -33,7 +33,7 @@ You can have several areas open at once. When you switch, the area you leave is 
 | 2 Messaging, Kafka | Done | 2.1, 2.2.1 to 2.2.18 (Kafka series complete) | Next in this area: RabbitMQ series (2.3) | Resumed on 2026-10-21 after the resilience notes were finished. Kafka error handling and the idempotent producer (2.2.8, 2.2.9) have their resilience prerequisites in place |
 | 13 Java, Streams | Paused | 13.1, 13.2.1 to 13.2.4 | 13.2.5 Collectors | Added on 2026-10-21 at your request. Numbered 13 so existing note paths don't change; the order of learning is set by "Do next", not by the number. Paused on 2026-10-22 when you chose system design; nothing is missing to resume |
 | 9 Cloud and containers, Docker and Kubernetes | Learning | 9.1, 9.2.1 to 9.2.9, 9.3.1 to 9.3.10 | 9.4 AWS core services for architects | Added on 2026-10-22 at your request (Docker, then Kubernetes). Builds on resilience (1.x) and system design (14.x). Hands-on on your Mac: Docker Desktop for the Docker series, the Rancher Desktop cluster for Kubernetes |
-| 4 Microservices, Saga | Learning | 4.1, 4.8.1 to 4.8.8, 4.8.99 | Saga series complete; next in this area: 4.2 to 4.7, 4.9 to 4.12 | Added on 2026-10-23 at your request (saga design pattern first). The area overview 4.1 is short; steps 4.2 to 4.7 and 4.9 to 4.12 follow later. Builds on resilience (1.x), messaging (2.x) and system design (14.x) |
+| 4 Microservices, Saga, CQRS | Learning | 4.1, 4.8.1 to 4.8.8, 4.8.99, 4.9.1 to 4.9.7, 4.9.99 | Saga and CQRS series complete; next in this area: 4.2 to 4.7, 4.10 to 4.12 | Added on 2026-10-23 at your request (saga first, then CQRS and event sourcing). The rest of the track (4.2 to 4.7, 4.10 to 4.12) follows later. Builds on resilience (1.x), messaging (2.x) and system design (14.x) |
 | 14 System design | Done | 14.1 to 14.20 (area complete) | none | Added on 2026-10-22 at your request, numbered 14 for the same reason. Builds on resilience (1.x) and messaging (2.x), which are done |
 
 ## Do next
@@ -154,7 +154,7 @@ Why: microservices solve organisational and scaling problems and create distribu
 | 4.6 | Service discovery and configuration | Both | Planned |
 | 4.7 | Data per service and consistency | Architect | Planned |
 | 4.8 | Saga and the outbox pattern (series below) | Both | Done |
-| 4.9 | CQRS and event sourcing | Architect | Planned |
+| 4.9 | CQRS and event sourcing (series below) | Architect | Done |
 | 4.10 | Resilience between services (links to track 1) | Both | Planned |
 | 4.11 | Testing microservices | Both | Planned |
 | 4.12 | Versioning, deployment and ownership | Architect | Planned |
@@ -172,6 +172,19 @@ Why: microservices solve organisational and scaling problems and create distribu
 | 4.8.7 | [Failures, timeouts and operating sagas](04-microservices/08-saga/07-failures-timeouts-operations.md) | Advanced | Both | Done |
 | 4.8.8 | [Case study: the ShopFlow checkout saga](04-microservices/08-saga/08-case-checkout-saga.md) | Advanced | Both | Done |
 | 4.8.99 | [Saga cheat sheet (revision)](04-microservices/08-saga/99-saga-cheat-sheet.md) | | Both | Done |
+
+**Series 4.9, CQRS and event sourcing (fundamentals to advanced).** Written as a series: `04-microservices/09-cqrs-event-sourcing/`. Hands-on: runnable Java 21 programs; the event store lesson also uses a real PostgreSQL.
+
+| Step | Topic | Level | Role | Status |
+|---|---|---|---|---|
+| 4.9.1 | [CQRS and event sourcing: the big picture and learning order](04-microservices/09-cqrs-event-sourcing/01-cqrs-es-overview.md) | Fundamentals | Both | Done |
+| 4.9.2 | [CQRS: separate models for writing and reading](04-microservices/09-cqrs-event-sourcing/02-cqrs-separate-models.md) | Fundamentals | Both | Done |
+| 4.9.3 | [Event sourcing: state as a sequence of events](04-microservices/09-cqrs-event-sourcing/03-event-sourcing.md) | Intermediate | Both | Done |
+| 4.9.4 | [Projections and read models](04-microservices/09-cqrs-event-sourcing/04-projections-read-models.md) | Intermediate | Both | Done |
+| 4.9.5 | [Snapshots, event versioning and privacy](04-microservices/09-cqrs-event-sourcing/05-snapshots-versioning-privacy.md) | Advanced | Both | Done |
+| 4.9.6 | [An event store in a relational database, and integration](04-microservices/09-cqrs-event-sourcing/06-event-store-postgresql-integration.md) | Advanced | Both | Done |
+| 4.9.7 | [Case study: the ShopFlow order history](04-microservices/09-cqrs-event-sourcing/07-case-order-history.md) | Advanced | Architect | Done |
+| 4.9.99 | [CQRS and event sourcing cheat sheet (revision)](04-microservices/09-cqrs-event-sourcing/99-cqrs-es-cheat-sheet.md) | | Both | Done |
 
 ### 5. Architecture foundations
 Why: an architect's main job is choosing between trade-offs and explaining the choice.

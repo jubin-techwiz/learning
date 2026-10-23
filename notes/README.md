@@ -78,8 +78,16 @@ Added on request (2026-10-23): the saga design pattern first. The area overview 
 | 4.8.7 | [Failures, timeouts and operating sagas](04-microservices/08-saga/07-failures-timeouts-operations.md) | Done |
 | 4.8.8 | [Case study: the ShopFlow checkout saga](04-microservices/08-saga/08-case-checkout-saga.md) | Done |
 | 4.8.99 | [Saga cheat sheet](04-microservices/08-saga/99-saga-cheat-sheet.md) (revision) | Done |
+| 4.9.1 | [CQRS and event sourcing: the big picture (series index)](04-microservices/09-cqrs-event-sourcing/01-cqrs-es-overview.md) | Done |
+| 4.9.2 | [CQRS: separate models for writing and reading](04-microservices/09-cqrs-event-sourcing/02-cqrs-separate-models.md) | Done |
+| 4.9.3 | [Event sourcing: state as a sequence of events](04-microservices/09-cqrs-event-sourcing/03-event-sourcing.md) | Done |
+| 4.9.4 | [Projections and read models](04-microservices/09-cqrs-event-sourcing/04-projections-read-models.md) | Done |
+| 4.9.5 | [Snapshots, event versioning and privacy](04-microservices/09-cqrs-event-sourcing/05-snapshots-versioning-privacy.md) | Done |
+| 4.9.6 | [An event store in a relational database, and integration](04-microservices/09-cqrs-event-sourcing/06-event-store-postgresql-integration.md) | Done |
+| 4.9.7 | [Case study: the ShopFlow order history](04-microservices/09-cqrs-event-sourcing/07-case-order-history.md) | Done |
+| 4.9.99 | [CQRS and event sourcing cheat sheet](04-microservices/09-cqrs-event-sourcing/99-cqrs-es-cheat-sheet.md) (revision) | Done |
 
-**Saga series complete (4.8.1 to 4.8.8).** Planned in this area: the rest of the track: when to use microservices, decomposition, communication, gateway, discovery, data per service, CQRS and event sourcing, resilience between services, testing, versioning. The full list is in the [roadmap](roadmap.md).
+**Saga (4.8.1 to 4.8.8) and CQRS and event sourcing (4.9.1 to 4.9.7) series complete.** Planned in this area: the rest of the track (when to use microservices, decomposition, communication, gateway, discovery, data per service, resilience between services, testing, versioning). The full list is in the [roadmap](roadmap.md).
 
 ### 09 · Cloud and containers
 
@@ -213,6 +221,8 @@ Only the concept, the terms, the ShopFlow example, how it works, the questions, 
 **Hands-on Java notes:** [13.2.1](13-java/02-streams/01-streams-overview.md), [13.2.2](13-java/02-streams/02-pipeline-laziness.md), [13.2.3](13-java/02-streams/03-transforming-filtering.md) and [13.2.4](13-java/02-streams/04-terminal-operations-optional.md) are built around complete Java 21 programs with their exact output, experiments and practice exercises with solutions. How to run them on a Mac (terminal or VS Code) is in [the Java overview](13-java/01-java-overview.md), section 5.
 
 **Runnable system design examples:** [14.3](14-system-design/03-back-of-the-envelope-estimation.md) to [14.20](14-system-design/20-case-shopflow-flash-sale.md) use small Java 21 programs (estimates, and simulations of design problems), so you can change the assumptions and run them again.
+
+**Runnable CQRS and event sourcing examples:** [4.9.1](04-microservices/09-cqrs-event-sourcing/01-cqrs-es-overview.md) to [4.9.7](04-microservices/09-cqrs-event-sourcing/07-case-order-history.md) use small Java 21 programs; [4.9.6](04-microservices/09-cqrs-event-sourcing/06-event-store-postgresql-integration.md) also shows real PostgreSQL output.
 
 **Runnable saga examples:** [4.8.1](04-microservices/08-saga/01-saga-overview.md) to [4.8.8](04-microservices/08-saga/08-case-checkout-saga.md) use small Java 21 simulations of services with injected failures; [4.8.5](04-microservices/08-saga/05-reliable-messaging-outbox-inbox.md) and [4.8.8](04-microservices/08-saga/08-case-checkout-saga.md) also show real PostgreSQL output.
 
