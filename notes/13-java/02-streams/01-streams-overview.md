@@ -177,7 +177,7 @@ The next note, [13.2.2](02-pipeline-laziness.md), proves each of these steps wit
 | 13.2.1 | This overview | 13.1 | Done |
 | 13.2.2 | [The pipeline: source, operations and laziness](02-pipeline-laziness.md) | 13.2.1 | Done |
 | 13.2.3 | [Transforming and filtering: `map`, `filter`, `flatMap`, `sorted`, `limit`](03-transforming-filtering.md) | 13.2.2 | Done |
-| 13.2.4 | Terminal operations and `Optional` | 13.2.2 | Planned |
+| 13.2.4 | [Terminal operations and `Optional`](04-terminal-operations-optional.md) | 13.2.2 | Done |
 
 ### Intermediate
 

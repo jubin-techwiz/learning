@@ -665,7 +665,7 @@ Answers are at the end of this note.
 
 **Architect's takeaway:** treat the order of stream operations as business logic, and push filtering, sorting and paging down to the database whenever the data lives there.
 
-**Next topic:** terminal operations and `Optional` (13.2.4, planned).
+**Next topic:** [Terminal operations and Optional](04-terminal-operations-optional.md) (13.2.4)
 
 ## 10. Verification and sources
 

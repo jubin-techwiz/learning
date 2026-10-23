@@ -656,74 +656,7 @@ copies: [o-1001-copy, o-1002-copy]
 
 ### `Stream.toList()` or `Collectors.toList()`?
 
-**Concept.** All three below gather elements into a `List` in encounter order, but they promise different things. `toList()` (Java 16+) returns an **unmodifiable** list. `Collectors.toList()` makes **no promise** about the list's type, mutability, serializability or thread safety. When you need a list you will change, ask for one explicitly with `Collectors.toCollection(ArrayList::new)`. The program checks only the guaranteed behaviour, so it never calls `add` on the `Collectors.toList()` result.
-
-```java
-// File: ToListDemo.java (runnable, Java 21)
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
-
-public class ToListDemo {
-
-    enum Status { PAID, PENDING, CANCELLED }
-
-    record Order(String id, String customer, Status status, long totalCents) {}
-
-    static List<Order> sampleOrders() {               // the same five ShopFlow orders in every example
-        return List.of(
-            new Order("o-1001", "ana", Status.PAID,      8_000),
-            new Order("o-1002", "ben", Status.CANCELLED, 3_000),
-            new Order("o-1003", "ana", Status.PAID,      2_500),
-            new Order("o-1004", "cy",  Status.PENDING,   4_500),
-            new Order("o-1005", "cy",  Status.PAID,     12_000));
-    }
-
-    public static void main(String[] args) {
-        List<Order> orders = sampleOrders();
-
-        List<String> fixed    = orders.stream().map(Order::id).toList();                                   // Java 16+: unmodifiable
-        List<String> anyList  = orders.stream().map(Order::id).collect(Collectors.toList());               // type and mutability unspecified
-        List<String> editable = orders.stream().map(Order::id).collect(Collectors.toCollection(ArrayList::new)); // always an ArrayList
-
-        // Guaranteed for all three: the same elements, in encounter order
-        System.out.println("same elements, same order: " + (fixed.equals(anyList) && anyList.equals(editable)));
-
-        // Guaranteed: Stream.toList() rejects changes
-        try {
-            fixed.add("o-9999");
-        } catch (UnsupportedOperationException e) {
-            System.out.println("Stream.toList(): add rejected with UnsupportedOperationException");
-        }
-
-        // Guaranteed: toCollection(ArrayList::new) gives a list you may change
-        editable.add("o-9999");
-        System.out.println("toCollection(ArrayList::new): add accepted, size " + editable.size());
-
-        // Collectors.toList(): neither outcome is promised, so don't depend on add() working or failing
-        System.out.println("Collectors.toList(): " + anyList.size() + " ids; mutability not specified, so not modified here");
-    }
-}
-```
-
-**Expected output** (run on OpenJDK 21.0.8, 2026-10-21):
-
-```text
-same elements, same order: true
-Stream.toList(): add rejected with UnsupportedOperationException
-toCollection(ArrayList::new): add accepted, size 6
-Collectors.toList(): 5 ids; mutability not specified, so not modified here
-```
-
-| You need | Use | Why |
-|---|---|---|
-| A result nobody should change (most service and DTO results) | `stream.toList()` | Unmodifiable, short, Java 16+ |
-| A list you will add to or sort in place | `Collectors.toCollection(ArrayList::new)` | Guaranteed `ArrayList` |
-| Older code, or a collector inside another collector | `Collectors.toList()` | Fine for reading; treat it as "some list": its type and mutability are not part of the contract |
-
-**Observation, not a guarantee.** On OpenJDK 21.0.8, `Collectors.toList()` returned a `java.util.ArrayList` (checked with `getClass()`), so code that adds to its result happens to work there. That is an implementation detail of this JDK, not part of the API, and another version or implementation may differ.
-
-**Practical implication.** Switching a method from `collect(Collectors.toList())` to `toList()` can break a caller that adds to the returned list: it will now get `UnsupportedOperationException` at run time. That caller was already relying on unspecified behaviour; if it needs to change the list, the method should return `Collectors.toCollection(ArrayList::new)` (or the caller should copy the list).
+In short: `Stream.toList()` (Java 16+) returns an **unmodifiable** list; `Collectors.toList()` makes **no promise** about the list's type or mutability; `Collectors.toCollection(ArrayList::new)` is the way to get a list you can change. The runnable comparison, the decision table and the refactoring trap are in [Terminal operations and Optional](04-terminal-operations-optional.md) (13.2.4).
 
 **When to use streams at all.** For filter-transform-gather work with small, pure steps. Use `forEach` only at the end, for effects such as logging, and `peek` only to debug. **Common mistakes:** thinking steps run over the whole data one after another; counting on `peek` output; sharing a stream between methods.
 
